@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PO Oluşturma</title>
+  <link rel="stylesheet" href="../shared/base.css">
+  <link rel="stylesheet" href="rep.css">
+</head>
+<body>
+  <header class="top">
+    <div class="top-left">
+      <a class="back" href="../">← Ana menü</a>
+      <h1>PO Oluşturma</h1>
+    </div>
+    <span id="server-status" class="muted">Bağlanıyor…</span>
+  </header>
+
+  <main class="layout">
+    <!-- Sol: PO listesi + yeni PO -->
+    <section class="card sidebar">
+      <form id="po-form" autocomplete="off" novalidate>
+        <h2>Yeni PO</h2>
+        <div class="field">
+          <label for="po_number">PO numarası *</label>
+          <input id="po_number" name="po_number" data-unique="po_number" required>
+          <div class="field-error" data-error-for="po_number"></div>
+        </div>
+        <div class="field">
+          <label for="customer">Müşteri</label>
+          <input id="customer" name="customer">
+        </div>
+        <button class="primary" type="submit">PO oluştur</button>
+      </form>
+
+      <hr>
+
+      <input id="po-search" type="search" placeholder="PO / müşteri ara…">
+      <ul id="po-list" class="po-list"></ul>
+    </section>
+
+    <!-- Sağ: seçili PO detayı ve iş emirleri -->
+    <section class="card detail" id="po-detail">
+      <p class="muted">Soldan bir PO seçin veya yeni PO oluşturun.</p>
+    </section>
+  </main>
+
+  <template id="po-detail-template">
+    <div class="detail-head">
+      <div>
+        <h2 class="mono" data-bind="po_number"></h2>
+        <div class="muted" data-bind="customer"></div>
+      </div>
+      <button class="danger" data-action="delete-po" type="button">PO'yu sil</button>
+    </div>
+
+    <form id="wo-form" class="wo-form" autocomplete="off" novalidate>
+      <h3>İş emri ekle</h3>
+      <div class="grid">
+        <div class="field">
+          <label for="ma_code">MA kodu *</label>
+          <input id="ma_code" name="ma_code" data-unique="ma_code" required>
+          <div class="field-error" data-error-for="ma_code"></div>
+        </div>
+        <div class="field">
+          <label for="barcode">Barkod *</label>
+          <input id="barcode" name="barcode" data-unique="barcode" required>
+          <div class="field-error" data-error-for="barcode"></div>
+        </div>
+        <div class="field">
+          <label for="quantity">Adet</label>
+          <input id="quantity" name="quantity" type="number" min="1" value="1">
+          <div class="field-error" data-error-for="quantity"></div>
+        </div>
+        <div class="field">
+          <label for="description">Açıklama</label>
+          <input id="description" name="description">
+        </div>
+      </div>
+      <button class="primary" type="submit">Ekle</button>
+    </form>
+
+    <table>
+      <thead>
+        <tr><th>MA kodu</th><th>Barkod</th><th>Açıklama</th><th>Adet</th><th>Durum</th><th></th></tr>
+      </thead>
+      <tbody id="wo-rows"></tbody>
+    </table>
+  </template>
+
+  <div class="toast" id="toast"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>İş Emri Okut</title>
+  <link rel="stylesheet" href="../shared/base.css">
+  <link rel="stylesheet" href="production.css">
+</head>
+<body>
+  <header class="top">
+    <div class="top-left">
+      <a class="back" href="../">← Ana menü</a>
+      <h1>İş Emri Okut</h1>
+    </div>
+    <span id="server-status" class="muted">Bağlanıyor…</span>
+  </header>
+
+  <main class="scan-screen">
+    <div class="station-picker">
+      <label for="station-select">İstasyon</label>
+      <select id="station-select" class="station-select">
+        <option value="">İstasyon seçin…</option>
+      </select>
+    </div>
+
+    <form id="scan-form" autocomplete="off">
+      <label for="barcode-input">Barkod</label>
+      <div class="scan-row">
+        <input id="barcode-input" class="scan-input mono" placeholder="Barkodu yazın" autofocus>
+        <button class="primary scan-button" type="submit">Okut</button>
+      </div>
+    </form>
+
+    <section id="result" class="result idle">
+      <div class="result-title">Hazır</div>
+      <div class="result-body muted">Barkodu yazıp Enter'a basın veya Okut'a tıklayın.</div>
+    </section>
+
+    <section class="card">
+      <h2>Son okutmalar</h2>
+      <ul id="history" class="history"></ul>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+.scan-screen {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 20px 16px;
+  display: grid;
+  gap: 16px;
+}
+
+.station-select {
+  font-size: 22px;
+  padding: 12px;
+  font-weight: 600;
+}
+.station-select.missing { border-color: var(--danger); background: var(--danger-bg); }
+
+.scan-row { display: flex; gap: 10px; }
+.scan-button { font-size: 22px; padding: 0 28px; }
+
+.scan-input {
+  font-size: 32px;
+  padding: 16px;
+  text-align: center;
+  letter-spacing: 2px;
+}
+
+.result {
+  border-radius: var(--radius);
+  padding: 24px;
+  text-align: center;
+  border: 2px solid var(--border);
+  background: var(--surface);
+}
+.result-title { font-size: 34px; font-weight: 700; }
+.result-body { font-size: 20px; margin-top: 8px; }
+
+.result.ok     { background: var(--ok-bg);     border-color: var(--ok);     color: var(--ok); }
+.result.warn   { background: var(--warn-bg);   border-color: var(--warn);   color: var(--warn); }
+.result.error  { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); }
+
+h2 { font-size: 15px; margin: 0 0 8px; }
+.history { list-style: none; margin: 0; padding: 0; }
+.history li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.history li.error { color: var(--danger); }

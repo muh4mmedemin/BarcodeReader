@@ -3,90 +3,149 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PO Oluşturma</title>
+  <title>PO Oluşturma — BarcodeReader</title>
   <link rel="stylesheet" href="../shared/base.css">
   <link rel="stylesheet" href="rep.css">
 </head>
 <body>
-  <header class="top">
-    <div class="top-left">
-      <a class="back" href="../">← Ana menü</a>
-      <h1>PO Oluşturma</h1>
-    </div>
-    <span id="server-status" class="muted">Bağlanıyor…</span>
+  <header class="titlebar">
+    <a class="app" href="../">BarcodeReader</a>
+    <span class="crumb">PO Oluşturma</span>
+    <span class="spacer"></span>
+    <a class="tb-item" href="../">Ana menü</a>
+    <span class="tb-item" id="tb-user"></span>
+    <a class="tb-item" id="tb-logout" href="#">Çıkış</a>
   </header>
 
-  <main class="layout">
-    <!-- Sol: PO listesi + yeni PO -->
-    <section class="card sidebar">
-      <form id="po-form" autocomplete="off" novalidate>
-        <h2>Yeni PO</h2>
-        <div class="field">
-          <label for="po_number">PO numarası *</label>
-          <input id="po_number" name="po_number" data-unique="po_number" required>
+  <main class="workspace">
+    <!-- Sol: PO defteri — liste ana öğe, yeni PO formu ihtiyaç olunca açılır -->
+    <aside class="pane side">
+      <div class="side-head">
+        <h2 class="side-title">PO'lar <span class="side-count mono" id="po-total"></span></h2>
+        <button type="button" class="new-btn" id="new-po-toggle" aria-expanded="false" aria-controls="po-form">
+          Yeni PO <kbd>N</kbd>
+        </button>
+      </div>
+
+      <form id="po-form" class="new-po" autocomplete="off" novalidate hidden>
+        <div class="np-field">
+          <label for="po_number">PO numarası</label>
+          <input id="po_number" name="po_number" class="mono np-po" data-unique="po_number" required>
           <div class="field-error" data-error-for="po_number"></div>
         </div>
-        <div class="field">
-          <label for="customer">Müşteri</label>
-          <input id="customer" name="customer">
+        <div class="np-two">
+          <div class="np-field">
+            <label for="customer">Müşteri</label>
+            <input id="customer" name="customer">
+          </div>
+          <div class="np-field">
+            <label for="due_date">Termin</label>
+            <input id="due_date" name="due_date" type="date">
+            <div class="field-error" data-error-for="due_date"></div>
+          </div>
         </div>
-        <button class="primary" type="submit">PO oluştur</button>
+        <div class="np-actions">
+          <button type="button" id="new-po-cancel">Vazgeç <kbd>Esc</kbd></button>
+          <button class="primary" type="submit">Kaydet</button>
+        </div>
       </form>
 
-      <hr>
+      <div class="finder">
+        <label class="find">
+          <span class="find-prefix mono">ARA</span>
+          <input id="po-search" type="search" autocomplete="off" aria-label="PO no veya müşteri ara">
+        </label>
+        <div class="filters" id="po-filters" role="radiogroup" aria-label="Filtre">
+          <button type="button" role="radio" data-filter="all">Tümü <b>0</b></button>
+          <button type="button" role="radio" data-filter="open">Açık <b>0</b></button>
+          <button type="button" role="radio" data-filter="late">Termin riski <b>0</b></button>
+          <button type="button" role="radio" data-filter="done">Biten <b>0</b></button>
+        </div>
+      </div>
 
-      <input id="po-search" type="search" placeholder="PO / müşteri ara…">
-      <ul id="po-list" class="po-list"></ul>
-    </section>
+      <ul class="ledger" id="po-list"></ul>
+    </aside>
 
-    <!-- Sağ: seçili PO detayı ve iş emirleri -->
-    <section class="card detail" id="po-detail">
-      <p class="muted">Soldan bir PO seçin veya yeni PO oluşturun.</p>
+    <!-- Sağ: seçili PO -->
+    <section class="pane detail" id="po-detail">
+      <div class="pane-head">İş emirleri</div>
     </section>
   </main>
 
   <template id="po-detail-template">
-    <div class="detail-head">
+    <div class="po-head">
       <div>
-        <h2 class="mono" data-bind="po_number"></h2>
-        <div class="muted" data-bind="customer"></div>
+        <div class="po-no mono" data-bind="po_number"></div>
+        <div class="po-meta">
+          <span>Müşteri: <b data-bind="customer"></b></span>
+          <span>Kayıt: <b class="mono" data-bind="created_at"></b></span>
+          <span class="due-edit">Termin:
+            <input type="date" id="due-input" aria-label="Termin tarihi">
+            <b class="due-tag" id="due-tag"></b>
+          </span>
+        </div>
       </div>
-      <button class="danger" data-action="delete-po" type="button">PO'yu sil</button>
+      <div class="po-actions">
+        <button type="button" data-action="export-po">Excel'e aktar</button>
+        <button class="danger" data-action="delete-po" type="button">PO'yu sil</button>
+      </div>
     </div>
 
+    <!-- Durum sayıları -->
+    <div class="counts" id="kpis"></div>
+
+    <!-- İş emirlerinin konuma göre dağılımı (adet ve yüzde) -->
+    <table class="dist">
+      <thead><tr><th>Konum</th><th class="num">İE</th><th class="num">%</th><th class="dist-bar-col"></th></tr></thead>
+      <tbody id="dist"></tbody>
+    </table>
+
     <form id="wo-form" class="wo-form" autocomplete="off" novalidate>
-      <h3>İş emri ekle</h3>
-      <div class="grid">
-        <div class="field">
-          <label for="ma_code">MA kodu *</label>
-          <input id="ma_code" name="ma_code" data-unique="ma_code" required>
-          <div class="field-error" data-error-for="ma_code"></div>
-        </div>
-        <div class="field">
-          <label for="barcode">Barkod *</label>
-          <input id="barcode" name="barcode" data-unique="barcode" required>
-          <div class="field-error" data-error-for="barcode"></div>
-        </div>
-        <div class="field">
-          <label for="quantity">Adet</label>
-          <input id="quantity" name="quantity" type="number" min="1" value="1">
-          <div class="field-error" data-error-for="quantity"></div>
-        </div>
-        <div class="field">
-          <label for="description">Açıklama</label>
-          <input id="description" name="description">
-        </div>
+      <div class="field">
+        <label for="ma_code">MA kodu</label>
+        <input id="ma_code" name="ma_code" class="mono" data-unique="ma_code" required>
+        <div class="field-error" data-error-for="ma_code"></div>
       </div>
-      <button class="primary" type="submit">Ekle</button>
+      <div class="field">
+        <label for="barcode">Barkod</label>
+        <input id="barcode" name="barcode" class="mono" data-unique="barcode" required>
+        <div class="field-error" data-error-for="barcode"></div>
+      </div>
+      <div class="field qty">
+        <label for="quantity">Adet</label>
+        <input id="quantity" name="quantity" type="number" min="1" value="1">
+        <div class="field-error" data-error-for="quantity"></div>
+      </div>
+      <div class="field grow">
+        <label for="description">Açıklama</label>
+        <input id="description" name="description">
+        <div class="field-error"></div>
+      </div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <button class="primary" type="submit">İş emri ekle</button>
+        <div class="field-error"></div>
+      </div>
     </form>
 
-    <table>
-      <thead>
-        <tr><th>MA kodu</th><th>Barkod</th><th>Açıklama</th><th>Adet</th><th>Durum</th><th></th></tr>
-      </thead>
-      <tbody id="wo-rows"></tbody>
-    </table>
+    <div class="wo-scroll">
+      <table class="wo-table">
+        <thead>
+          <tr>
+            <th class="num">#</th><th>MA kodu</th><th>Barkod</th><th>Açıklama</th>
+            <th class="num">Adet</th><th>Durum</th><th>Hat konumu</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="wo-rows"></tbody>
+      </table>
+    </div>
   </template>
+
+  <footer class="statusbar">
+    <span><i id="sb-led" class="sq"></i><span id="sb-conn">Bağlanıyor…</span></span>
+    <span>API <b id="sb-api" class="mono"></b></span>
+    <span class="sb-right mono" id="sb-clock"></span>
+  </footer>
 
   <div class="toast" id="toast"></div>
   <script type="module" src="app.js"></script>

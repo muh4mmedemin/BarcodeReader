@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Giriş — BarcodeReader</title>
+  <link rel="stylesheet" href="shared/base.css">
+  <style>
+    .login { width: 100%; max-width: 380px; margin: 0 auto; padding: 48px 16px; }
+    .login button { width: 100%; height: 40px; margin-top: 4px; }
+    .login input { height: 38px; }
+    .login .form-error { color: var(--alarm); min-height: 18px; margin: 4px 0 0; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header class="titlebar">
+    <span class="app">BarcodeReader</span>
+    <span class="crumb">Giriş</span>
+  </header>
+
+  <main class="login">
+    <section class="pane">
+      <div class="pane-head">Kullanıcı girişi</div>
+      <form id="login-form" class="pane-body" autocomplete="on" novalidate>
+        <div class="field">
+          <label for="username">Kullanıcı adı</label>
+          <input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" autofocus required>
+        </div>
+        <div class="field">
+          <label for="password">Şifre</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+        </div>
+        <button class="primary" type="submit">Giriş yap</button>
+        <p class="form-error" id="login-error" role="alert"></p>
+      </form>
+    </section>
+  </main>
+
+  <footer class="statusbar">
+    <span><i id="sb-led" class="sq"></i><span id="sb-conn">Bağlanıyor…</span></span>
+    <span>API <b id="sb-api" class="mono"></b></span>
+    <span class="sb-right mono" id="sb-clock"></span>
+  </footer>
+
+  <script type="module" src="login.js"></script>
+</body>
+</html>

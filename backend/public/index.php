@@ -2,8 +2,11 @@
 
 declare(strict_types=1);
 
+use App\Controllers\AuthController;
+use App\Controllers\ExportController;
 use App\Controllers\ProductionController;
 use App\Controllers\PurchaseOrderController;
+use App\Controllers\ReportController;
 use App\Controllers\SystemController;
 use App\Controllers\WorkOrderController;
 use App\Database;
@@ -11,7 +14,10 @@ use App\Http\HttpException;
 use App\Http\Request;
 use App\Http\Response;
 use App\Http\Router;
+use App\Services\AuthService;
+use App\Services\PoExportService;
 use App\Services\PurchaseOrderService;
+use App\Services\ReportService;
 use App\Services\StationService;
 use App\Services\UniqueGuard;
 use App\Services\WorkOrderService;
@@ -27,14 +33,16 @@ if ($request->method === 'OPTIONS') {
 }
 
 try {
-    // Kimlik: X-API-Key başlığı hangi client/rol olduğunu belirler.
-    $apiKey = $request->header('x-api-key');
-    $request->role = $apiKey !== null ? ($config['api_keys'][$apiKey] ?? null) : null;
-    if ($apiKey !== null && $request->role === null) {
-        throw new HttpException(401, 'INVALID_API_KEY', 'Geçersiz API anahtarı.');
-    }
-
     $db = Database::connect($config['db_path']);
+
+    // Kimlik: "Authorization: Bearer <token>" — token girişte (POST /auth/login) verilir.
+    $authService = new AuthService($db);
+    $token = $request->bearerToken();
+    if ($token !== null) {
+        $request->user = $authService->userFromToken($token)
+            ?? throw new HttpException(401, 'SESSION_EXPIRED', 'Oturum geçersiz veya süresi dolmuş. Tekrar giriş yapın.');
+        $request->role = $request->user['role'];
+    }
 
     $unique         = new UniqueGuard($db);
     $stationService = new StationService($db);
@@ -46,12 +54,18 @@ try {
     $wo         = new WorkOrderController($woService);
     $production = new ProductionController($woService, $stationService);
     $system     = new SystemController($unique);
+    $authCtl    = new AuthController($authService);
+    $reports    = new ReportController(new ReportService($db));
+    $exports    = new ExportController(new PoExportService(
+        $db, $poService, $woService, $stationService,
+        $config['po_template_default'], $config['po_template_custom'],
+    ));
     require __DIR__ . '/../routes.php';
 
     $router->dispatch($request);
 } catch (HttpException $e) {
     if ($e->status === 403 && $request->role === null) {
-        $e = new HttpException(401, 'UNAUTHORIZED', 'X-API-Key başlığı gerekli.');
+        $e = new HttpException(401, 'UNAUTHORIZED', 'Giriş yapmanız gerekiyor.');
     }
     Response::json($e->toArray(), $e->status);
 } catch (Throwable $e) {

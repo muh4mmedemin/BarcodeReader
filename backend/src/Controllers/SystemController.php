@@ -20,11 +20,6 @@ final class SystemController
         Response::data(['status' => 'ok', 'version' => 'v1', 'time' => date(DATE_ATOM)]);
     }
 
-    public function me(Request $request): void
-    {
-        Response::data(['role' => $request->role]);
-    }
-
     /**
      * Form doldururken anlık benzersizlik kontrolü.
      * GET /api/v1/check?field=barcode&value=XYZ[&except_id=5]

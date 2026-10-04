@@ -26,6 +26,11 @@ final class PurchaseOrderController
         Response::data($result['items'], meta: ['total' => $result['total'], 'limit' => $limit, 'offset' => $offset]);
     }
 
+    public function overview(): void
+    {
+        Response::data($this->workOrders->overview());
+    }
+
     public function show(Request $request, array $params): void
     {
         $id = (int) $params['id'];

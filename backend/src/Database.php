@@ -62,14 +62,31 @@ final class Database
                 continue;
             }
 
+            $sql = (string) file_get_contents($file);
+
+            // Tablo yeniden kurulan migration'lar (SQLite'ta CHECK/sütun değişikliği) yabancı
+            // anahtarlar kapalıyken çalışmalı; bunu dosyanın ilk satırındaki işaret belirtir.
+            // Commit'ten önce foreign_key_check ile bütünlük doğrulanır.
+            $noForeignKeys = str_starts_with($sql, '-- migrate:no-foreign-keys');
+            if ($noForeignKeys) {
+                $pdo->exec('PRAGMA foreign_keys = OFF');
+            }
+
             $pdo->beginTransaction();
             try {
-                $pdo->exec((string) file_get_contents($file));
+                $pdo->exec($sql);
+                if ($noForeignKeys && $pdo->query('PRAGMA foreign_key_check')->fetch() !== false) {
+                    throw new \RuntimeException('yabancı anahtar bütünlüğü bozuldu');
+                }
                 $pdo->prepare('INSERT INTO schema_migrations (version) VALUES (:v)')->execute(['v' => $version]);
                 $pdo->commit();
             } catch (\Throwable $e) {
                 $pdo->rollBack();
                 throw new \RuntimeException("Migration başarısız: $version — " . $e->getMessage(), 0, $e);
+            } finally {
+                if ($noForeignKeys) {
+                    $pdo->exec('PRAGMA foreign_keys = ON');
+                }
             }
             $ran[] = $version;
         }

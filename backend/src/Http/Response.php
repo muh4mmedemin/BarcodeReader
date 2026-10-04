@@ -23,6 +23,18 @@ final class Response
         self::json($payload, $status);
     }
 
+    /** Dosya indirme yanıtı (Türkçe karakterli adlar için filename* kullanılır). */
+    public static function file(string $content, string $filename, string $mime): void
+    {
+        $ascii = preg_replace('/[^A-Za-z0-9._-]+/', '_', $filename);
+        http_response_code(200);
+        header('Content-Type: ' . $mime);
+        header('Content-Length: ' . strlen($content));
+        header("Content-Disposition: attachment; filename=\"$ascii\"; filename*=UTF-8''" . rawurlencode($filename));
+        header('Cache-Control: no-store');
+        echo $content;
+    }
+
     public static function noContent(): void
     {
         http_response_code(204);
@@ -38,7 +50,8 @@ final class Response
             header('Vary: Origin');
         }
         header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-        header('Access-Control-Allow-Headers: Content-Type, X-API-Key');
+        header('Access-Control-Allow-Headers: Content-Type, Authorization');
         header('Access-Control-Max-Age: 86400');
+        header('Access-Control-Expose-Headers: Content-Disposition');
     }
 }

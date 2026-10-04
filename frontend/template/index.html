@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Excel Şablonu — BarcodeReader</title>
+  <link rel="stylesheet" href="../shared/base.css">
+  <link rel="stylesheet" href="template.css">
+</head>
+<body>
+  <header class="titlebar">
+    <a class="app" href="../">BarcodeReader</a>
+    <span class="crumb">Excel Şablonu</span>
+    <span class="spacer"></span>
+    <a class="tb-item" href="../">Ana menü</a>
+    <span class="tb-item" id="tb-user"></span>
+    <a class="tb-item" id="tb-logout" href="#">Çıkış</a>
+  </header>
+
+  <main class="tpl">
+    <section class="pane">
+      <div class="pane-head">PO dışa aktarma şablonu</div>
+      <div class="current">
+        <div class="current-state">
+          <span class="state" id="tpl-state"></span>
+          <span class="muted" id="tpl-meta"></span>
+        </div>
+        <div class="actions">
+          <button type="button" id="download">Şablonu indir</button>
+          <label class="button primary" for="upload">Yeni şablon yükle</label>
+          <input type="file" id="upload" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+          <button type="button" class="danger" id="reset" hidden>Varsayılana dön</button>
+        </div>
+        <p class="result" id="result" role="status"></p>
+      </div>
+    </section>
+
+    <section class="pane">
+      <div class="pane-head">Kurallar</div>
+      <ol class="rules">
+        <li>Şablonu indirin, Excel'de istediğiniz gibi düzenleyin (logo, renk, sütun sırası, ek başlıklar) ve <b>.xlsx</b> olarak kaydedip yükleyin. Biçimlendirme olduğu gibi korunur.</li>
+        <li>Hücreye <code>{po_number}</code> gibi bir yer tutucu yazın; dışa aktarırken gerçek değerle değişir. Yazının içinde de kullanılabilir: <code>PO: {po_number}</code>.</li>
+        <li><code>{wo.…}</code>, <code>{scan.…}</code> veya <code>{loc.…}</code> içeren <b>satır</b>, listedeki her kayıt için tekrarlanır; altındaki satırlar aşağı kayar. Bir satırda yalnızca bir liste kullanın.</li>
+        <li>Tekrar satırının altına <code>=TOPLA(E12)</code> veya <code>=TOPLA(E12:E12)</code> yazarsanız aralık tüm tekrarları kapsayacak şekilde genişler.</li>
+        <li>Hücrede tek başına duran sayısal yer tutucular (ör. <code>{wo.quantity}</code>) Excel'e sayı olarak yazılır.</li>
+        <li>Desteklenmeyen: başka sayfaya işaret eden formüller, Excel Tablosu (Ctrl+T) ve yazdırma alanı — tekrar satırının altındaysa kaydırılmaz.</li>
+      </ol>
+    </section>
+
+    <section class="pane">
+      <div class="pane-head">
+        <span>Yer tutucular</span>
+        <span class="muted" id="copy-note"></span>
+      </div>
+      <div id="placeholders" class="ph-groups"></div>
+    </section>
+  </main>
+
+  <footer class="statusbar">
+    <span><i id="sb-led" class="sq"></i><span id="sb-conn">Bağlanıyor…</span></span>
+    <span>API <b id="sb-api" class="mono"></b></span>
+    <span class="sb-right mono" id="sb-clock"></span>
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

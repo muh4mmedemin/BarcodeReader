@@ -29,9 +29,20 @@ final class WorkOrderController
         Response::data($this->workOrders->get((int) $params['id']));
     }
 
+    public function history(Request $request, array $params): void
+    {
+        Response::data($this->workOrders->history((int) $params['id']));
+    }
+
     public function update(Request $request, array $params): void
     {
         Response::data($this->workOrders->update((int) $params['id'], $request->json()));
+    }
+
+    /** Yönetici: iş emrini istenen istasyona / Bekliyor / İptal durumuna taşır. */
+    public function move(Request $request, array $params): void
+    {
+        Response::data($this->workOrders->move((int) $params['id'], $request->json(), $request->user['id']));
     }
 
     public function destroy(Request $request, array $params): void

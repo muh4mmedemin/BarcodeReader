@@ -32,7 +32,8 @@ final class PurchaseOrderService
         $stmt = $this->db->prepare(
             "SELECT p.*,
                     COUNT(w.id) AS work_order_count,
-                    SUM(CASE WHEN w.status = 'done' THEN 1 ELSE 0 END) AS done_count
+                    SUM(CASE WHEN w.status = 'done' THEN 1 ELSE 0 END) AS done_count,
+                    SUM(CASE WHEN w.status = 'in_progress' THEN 1 ELSE 0 END) AS in_progress_count
                FROM purchase_orders p
                LEFT JOIN work_orders w ON w.po_id = p.id
                $where
@@ -50,6 +51,7 @@ final class PurchaseOrderService
         $items = array_map(function (array $row): array {
             $row['work_order_count'] = (int) $row['work_order_count'];
             $row['done_count'] = (int) $row['done_count'];
+            $row['in_progress_count'] = (int) $row['in_progress_count'];
             return $this->cast($row);
         }, $stmt->fetchAll());
 
@@ -74,12 +76,13 @@ final class PurchaseOrderService
 
         try {
             $stmt = $this->db->prepare(
-                'INSERT INTO purchase_orders (po_number, customer, note) VALUES (:po, :customer, :note)'
+                'INSERT INTO purchase_orders (po_number, customer, note, due_date) VALUES (:po, :customer, :note, :due)'
             );
             $stmt->execute([
                 'po'       => $poNumber,
                 'customer' => Validator::optionalText($input, 'customer', 200),
                 'note'     => Validator::optionalText($input, 'note', 2000),
+                'due'      => Validator::optionalDate($input, 'due_date'),
             ]);
         } catch (PDOException $e) {
             throw UniqueGuard::translate($e);
@@ -100,7 +103,7 @@ final class PurchaseOrderService
         try {
             $stmt = $this->db->prepare(
                 "UPDATE purchase_orders
-                    SET po_number = :po, customer = :customer, note = :note, updated_at = datetime('now')
+                    SET po_number = :po, customer = :customer, note = :note, due_date = :due, updated_at = datetime('now')
                   WHERE id = :id"
             );
             $stmt->execute([
@@ -110,6 +113,8 @@ final class PurchaseOrderService
                     ? Validator::optionalText($input, 'customer', 200) : $current['customer'],
                 'note'     => array_key_exists('note', $input)
                     ? Validator::optionalText($input, 'note', 2000) : $current['note'],
+                'due'      => array_key_exists('due_date', $input)
+                    ? Validator::optionalDate($input, 'due_date') : $current['due_date'],
             ]);
         } catch (PDOException $e) {
             throw UniqueGuard::translate($e);

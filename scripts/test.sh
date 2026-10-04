@@ -10,9 +10,8 @@ cd "$(dirname "$0")/.."
 PORT="${TEST_PORT:-8799}"
 TMP="$(mktemp -d)"
 export BARKOD_DB_PATH="$TMP/test.sqlite"
+export BARKOD_PO_TEMPLATE="$TMP/templates/po.xlsx"
 B="http://127.0.0.1:${PORT}/api/v1"
-REP='X-API-Key: dev-rep-key'
-PROD='X-API-Key: dev-production-key'
 JSON='Content-Type: application/json'
 
 php backend/bin/migrate.php --seed >/dev/null || { echo "migrate başarısız"; exit 1; }
@@ -21,6 +20,14 @@ PID=$!
 trap 'kill $PID 2>/dev/null; rm -rf "$TMP"' EXIT
 
 for _ in $(seq 50); do curl -s -o /dev/null "$B/health" && break; sleep 0.1; done
+
+# Giriş yapıp oturum token'ı alır (migration 003'teki başlangıç kullanıcıları, şifre 123)
+login() {
+  curl -s -X POST -H "$JSON" -d "{\"username\":\"$1\",\"password\":\"123\"}" "$B/auth/login" \
+    | grep -oE '"token":"[0-9a-f]{64}"' | cut -d'"' -f4
+}
+REP="Authorization: Bearer $(login mami)"
+PROD="Authorization: Bearer $(login freze)"
 
 PASS=0
 FAIL=0
@@ -64,17 +71,20 @@ expect_sql() {
 
 # Örnek veri (migrate --seed): PO id=1 "PO-2026-001";
 #   iş emri 1: MA-0001 / 8690000000011, iş emri 2: MA-0002 / 8690000000028
-# İstasyonlar: 1 Kesim, 2 Büküm, 3 Kaynak, ... 8 Paketleme (son istasyon)
+# Aktif istasyonlar: 9 Elektrik, 10 Freze, 11 CNC, 7 Kalite Kontrol, 8 Paketleme (son)
 
-echo "1) Kimlik ve rol yetkileri"
-check "health anahtarsız açık"                 200 '"status":"ok"'          "$B/health"
-check "anahtarsız istek reddedilir"             401 'UNAUTHORIZED'           "$B/pos"
-check "yanlış anahtar reddedilir"               401 'INVALID_API_KEY'        -H 'X-API-Key: yanlis' "$B/pos"
-check "üretim anahtarı PO listeleyemez"         403 'FORBIDDEN'              -H "$PROD" "$B/pos"
-check "üretim anahtarı PO oluşturamaz"          403 'FORBIDDEN'              -X POST -H "$PROD" -H "$JSON" -d '{"po_number":"X"}' "$B/pos"
-check "temsilci anahtarı okutma yapamaz"        403 'FORBIDDEN'              -X POST -H "$REP" -H "$JSON" -d '{"barcode":"8690000000011","station_id":1}' "$B/production/scan"
-check "üretim anahtarı istasyonları görür"      200 '"name":"Paketleme"'     -H "$PROD" "$B/stations"
-check "/me rolü döndürür"                       200 '"role":"production"'    -H "$PROD" "$B/me"
+echo "1) Giriş ve rol yetkileri"
+check "health girişsiz açık"                    200 '"status":"ok"'          "$B/health"
+check "yanlış şifre reddedilir"                 401 'INVALID_CREDENTIALS'    -X POST -H "$JSON" -d '{"username":"mami","password":"yanlis"}' "$B/auth/login"
+check "girişsiz istek reddedilir"               401 'UNAUTHORIZED'           "$B/pos"
+check "geçersiz token reddedilir"               401 'SESSION_EXPIRED'        -H "Authorization: Bearer $(printf '0%.0s' {1..64})" "$B/pos"
+check "üretim kullanıcısı PO listeleyemez"      403 'FORBIDDEN'              -H "$PROD" "$B/pos"
+check "üretim kullanıcısı PO oluşturamaz"       403 'FORBIDDEN'              -X POST -H "$PROD" -H "$JSON" -d '{"po_number":"X"}' "$B/pos"
+check "üretim kullanıcısı istasyonları görür"   200 '"name":"Paketleme"'     -H "$PROD" "$B/stations"
+check "/me kullanıcı ve istasyonu döndürür"     200 '"station_name":"Freze"' -H "$PROD" "$B/me"
+TMPTOK="Authorization: Bearer $(login cnc)"
+check "çıkış yapılır"                           204 ''                       -X POST -H "$TMPTOK" "$B/auth/logout"
+check "çıkıştan sonra token geçersiz"           401 'SESSION_EXPIRED'        -H "$TMPTOK" "$B/me"
 
 echo "2) Benzersizlik (PO no, MA kodu, barkod)"
 check "aynı PO no (küçük harfle) reddedilir"    409 '"field":"po_number"'    -X POST -H "$REP" -H "$JSON" -d '{"po_number":"po-2026-001"}' "$B/pos"
@@ -97,28 +107,77 @@ check "bozuk JSON reddedilir"                   400 'INVALID_JSON'           -X 
 check "olmayan PO'ya iş emri eklenemez"         404 'NOT_FOUND'              -X POST -H "$REP" -H "$JSON" -d '{"ma_code":"MA-N","barcode":"N1"}' "$B/pos/999/work-orders"
 
 echo "4) Okutma ve istasyon akışı"
-check "istasyonsuz okutma reddedilir"           422 '"field":"station_id"'   -X POST -H "$PROD" -H "$JSON" -d '{"barcode":"B9"}' "$B/production/scan"
-check "olmayan istasyon reddedilir"             422 '"field":"station_id"'   -X POST -H "$PROD" -H "$JSON" -d '{"barcode":"B9","station_id":99}' "$B/production/scan"
-check "bilinmeyen barkod"                       404 'BARCODE_NOT_FOUND'      -X POST -H "$PROD" -H "$JSON" -d '{"barcode":"YOK","station_id":1}' "$B/production/scan"
-check "Kesim'de okut → üretimde, Kesim"         201 '"status":"in_progress"' -X POST -H "$PROD" -H "$JSON" -d '{"barcode":"B9","station_id":1}' "$B/production/scan"
-check "aynı istasyonda tekrar okutma yasak"     409 'ALREADY_AT_STATION'     -X POST -H "$PROD" -H "$JSON" -d '{"barcode":"B9","station_id":1}' "$B/production/scan"
-check "küçük harf barkodla Kaynak'ta okut"      201 '"current_station_name":"Kaynak"' -X POST -H "$PROD" -H "$JSON" -d '{"barcode":"b9","station_id":3}' "$B/production/scan"
-check "PO detayında istasyon görünür"           200 '"current_station_name":"Kaynak"' -H "$REP" "$B/pos/2"
-check "Paketleme (son) → tamamlandı"            201 '"status":"done"'        -X POST -H "$PROD" -H "$JSON" -d '{"barcode":"B9","station_id":8}' "$B/production/scan"
-check "tamamlanmış iş emri okutulamaz"          409 'WORK_ORDER_DONE'        -X POST -H "$PROD" -H "$JSON" -d '{"barcode":"B9","station_id":2}' "$B/production/scan"
+check "istasyonsuz okutma reddedilir"           422 '"field":"station_id"'   -X POST -H "$REP" -H "$JSON" -d '{"barcode":"B9"}' "$B/production/scan"
+check "olmayan istasyon reddedilir"             422 '"field":"station_id"'   -X POST -H "$REP" -H "$JSON" -d '{"barcode":"B9","station_id":99}' "$B/production/scan"
+check "bilinmeyen barkod"                       404 'BARCODE_NOT_FOUND'      -X POST -H "$REP" -H "$JSON" -d '{"barcode":"YOK","station_id":9}' "$B/production/scan"
+check "Elektrik'te okut → üretimde"         201 '"status":"in_progress"' -X POST -H "$REP" -H "$JSON" -d '{"barcode":"B9","station_id":9}' "$B/production/scan"
+check "aynı istasyonda tekrar okutma yasak"     409 'ALREADY_AT_STATION'     -X POST -H "$REP" -H "$JSON" -d '{"barcode":"B9","station_id":9}' "$B/production/scan"
+check "küçük harf barkodla Freze'de okut"      201 '"current_station_name":"Freze"' -X POST -H "$REP" -H "$JSON" -d '{"barcode":"b9","station_id":10}' "$B/production/scan"
+check "PO detayında istasyon görünür"           200 '"current_station_name":"Freze"' -H "$REP" "$B/pos/2"
+check "Paketleme (son) → tamamlandı"            201 '"status":"done"'        -X POST -H "$REP" -H "$JSON" -d '{"barcode":"B9","station_id":8}' "$B/production/scan"
+check "tamamlanmış iş emri okutulamaz"          409 'WORK_ORDER_DONE'        -X POST -H "$REP" -H "$JSON" -d '{"barcode":"B9","station_id":11}' "$B/production/scan"
 check "PO listesinde tamamlanan sayısı"         200 '"done_count":1'         -H "$REP" "$B/pos?search=PO-2"
 check "iş emri iptal edilebilir"                200 '"status":"cancelled"'   -X PUT -H "$REP" -H "$JSON" -d '{"status":"cancelled"}' "$B/work-orders/2"
-check "iptal iş emri okutulamaz"                409 'WORK_ORDER_CANCELLED'   -X POST -H "$PROD" -H "$JSON" -d '{"barcode":"8690000000028","station_id":1}' "$B/production/scan"
+check "iptal iş emri okutulamaz"                409 'WORK_ORDER_CANCELLED'   -X POST -H "$REP" -H "$JSON" -d '{"barcode":"8690000000028","station_id":9}' "$B/production/scan"
 check "open'a alınınca istasyon temizlenir"     200 '"current_station_id":null' -X PUT -H "$REP" -H "$JSON" -d '{"status":"open"}' "$B/work-orders/3"
 check "barkod sorgulama (lookup)"               200 '"ma_code":"MA-0001"'    -H "$PROD" "$B/production/lookup/8690000000011"
 expect_sql "her okutma istasyonuyla kaydedildi" \
   "SELECT s.name FROM scans sc JOIN stations s ON s.id = sc.station_id ORDER BY sc.id" \
-  '[{"name":"Kesim"},{"name":"Kaynak"},{"name":"Paketleme"}]'
+  '[{"name":"Elektrik"},{"name":"Freze"},{"name":"Paketleme"}]'
+check "iş emri istasyon geçmişi (tarih + okutan)" 200 '"station_name":"Elektrik","is_final":false,"username":"mami"' -H "$REP" "$B/work-orders/3/scans"
+check "PO takip raporu (PO + iş emirleri)"     200 '"last_scan_at":'          -H "$REP" "$B/reports/overview"
+check "PO termin tarihiyle kaydedilir"         201 '"due_date":"2020-01-15"' -X POST -H "$REP" -H "$JSON" -d '{"po_number":"PO-GEC","due_date":"2020-01-15"}' "$B/pos"
+check "geçersiz termin tarihi reddedilir"       422 '"field":"due_date"'     -X POST -H "$REP" -H "$JSON" -d '{"po_number":"PO-X1","due_date":"2020-02-30"}' "$B/pos"
+check "istasyon süre analizi"                   200 '"avg_seconds":'         -H "$REP" "$B/reports/stations?days=30"
+BOARDTOK="Authorization: Bearer $(login pano)"
+check "pano verisi (geciken PO dahil)"          200 '"po_number":"PO-GEC"'   -H "$BOARDTOK" "$B/board"
+V1=$(curl -s -H "$BOARDTOK" "$B/board/version" | grep -oE '"version":"[0-9a-f]{16}"')
+check "pano sürümü değişmezse aynı kalır"       200 "$V1"                    -H "$BOARDTOK" "$B/board/version"
+curl -s -o /dev/null -X POST -H "$REP" -H "$JSON" -d '{"po_number":"PO-SURUM"}' "$B/pos"
+V2=$(curl -s -H "$BOARDTOK" "$B/board/version" | grep -oE '"version":"[0-9a-f]{16}"')
+if [[ -n $V1 && $V1 != "$V2" ]]; then PASS=$((PASS + 1)); echo "  ✓ veri değişince pano sürümü değişir"; else FAIL=$((FAIL + 1)); echo "  ✗ veri değişince pano sürümü değişir ($V1 / $V2)"; fi
+check "pano kullanıcısı PO göremez"             403 'FORBIDDEN'              -H "$BOARDTOK" "$B/pos"
+check "pano kullanıcısı okutma yapamaz"         403 'FORBIDDEN'              -X POST -H "$BOARDTOK" -H "$JSON" -d '{"barcode":"B9"}' "$B/production/scan"
+check "üretim kullanıcısı panoyu göremez"       403 'FORBIDDEN'              -H "$PROD" "$B/board"
+
+# Excel dışa aktarma ve şablon
+code=$(curl -s -o "$TMP/po1.xlsx" -w '%{http_code} %{content_type}' -H "$REP" "$B/pos/1/export")
+if [[ $code == "200 application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ]] \
+   && php -r 'require "backend/bootstrap.php"; $f = App\Excel\Zip::read(file_get_contents($argv[1])); exit(str_contains($f["xl/worksheets/sheet1.xml"], "MA-0001") && !str_contains($f["xl/worksheets/sheet1.xml"], "{wo.") ? 0 : 1);' "$TMP/po1.xlsx"; then
+  PASS=$((PASS + 1)); echo "  ✓ PO Excel'e aktarılır (iş emirleri dolu, yer tutucu kalmaz)"
+else
+  FAIL=$((FAIL + 1)); echo "  ✗ PO Excel'e aktarılır ($code)"
+fi
+check "üretim kullanıcısı Excel alamaz"         403 'FORBIDDEN'              -H "$PROD" "$B/pos/1/export"
+check "şablon bilgisi ve yer tutucular"         200 '"key":"wo.ma_code"'     -H "$REP" "$B/templates/po"
+printf 'excel degil' > "$TMP/bad.xlsx"
+check "geçersiz şablon reddedilir"              422 '"field":"file"'         -X POST -H "$REP" -F "file=@$TMP/bad.xlsx" "$B/templates/po"
+check "geçerli şablon yüklenir"                 200 '"custom":true'          -X POST -H "$REP" -F "file=@backend/templates/po.xlsx" "$B/templates/po"
+check "varsayılan şablona dönülür"              200 '"custom":false'         -X DELETE -H "$REP" "$B/templates/po"
+check "üretim kullanıcısı raporu göremez"       403 'FORBIDDEN'              -H "$PROD" "$B/reports/overview"
+check "üretim kullanıcısı geçmişi göremez"      403 'FORBIDDEN'              -H "$PROD" "$B/work-orders/3/scans"
+check "üretim kullanıcısının istasyonu sabit (gövde yok sayılır)" 201 '"current_station_name":"Freze"' -X POST -H "$PROD" -H "$JSON" -d '{"barcode":"8690000000011","station_id":9}' "$B/production/scan"
+expect_sql "okutmayı yapan kullanıcı kaydedildi" \
+  "SELECT u.username FROM scans sc JOIN users u ON u.id = sc.user_id ORDER BY sc.id DESC LIMIT 1" '[{"username":"freze"}]'
+
+# Yönetici: iş emrini istediği konuma taşır (iş emri 3 = B9, şu an Bekliyor)
+ADMINTOK="Authorization: Bearer $(login admin)"
+check "yönetici iş emrini Paketleme'ye taşır → tamamlandı" 200 '"status":"done"'   -X POST -H "$ADMINTOK" -H "$JSON" -d '{"station_id":8}' "$B/work-orders/3/move"
+check "yönetici tamamlanmışı geri istasyona alır"   200 '"current_station_name":"CNC"' -X POST -H "$ADMINTOK" -H "$JSON" -d '{"station_id":11}' "$B/work-orders/3/move"
+check "aynı konuma taşıma reddedilir"               409 'NO_CHANGE'                 -X POST -H "$ADMINTOK" -H "$JSON" -d '{"station_id":11}' "$B/work-orders/3/move"
+check "yönetici Bekliyor'a alır"                    200 '"current_station_id":null' -X POST -H "$ADMINTOK" -H "$JSON" -d '{"status":"open"}' "$B/work-orders/3/move"
+check "geçersiz hedef reddedilir"                   422 '"field":"station_id"'      -X POST -H "$ADMINTOK" -H "$JSON" -d '{"status":"done"}' "$B/work-orders/3/move"
+check "taşıma geçmişte yöneticiyle görünür"         200 '"username":"admin","kind":"move","status":"open"' -H "$ADMINTOK" "$B/work-orders/3/scans"
+check "temsilci taşıma yapamaz"                     403 'FORBIDDEN'                 -X POST -H "$REP" -H "$JSON" -d '{"station_id":9}' "$B/work-orders/3/move"
+check "üretim kullanıcısı taşıma yapamaz"           403 'FORBIDDEN'                 -X POST -H "$PROD" -H "$JSON" -d '{"station_id":9}' "$B/work-orders/3/move"
+check "yönetici PO oluşturamaz"                     403 'FORBIDDEN'                 -X POST -H "$ADMINTOK" -H "$JSON" -d '{"po_number":"ADM"}' "$B/pos"
+check "yönetici okutma yapamaz"                     403 'FORBIDDEN'                 -X POST -H "$ADMINTOK" -H "$JSON" -d '{"barcode":"B9"}' "$B/production/scan"
+check "yönetici Excel şablonunu değiştiremez"       403 'FORBIDDEN'                 -X DELETE -H "$ADMINTOK" "$B/templates/po"
 
 echo "5) Silme ve bağlı kayıtlar"
 check "PO silinir"                              204 ''                       -X DELETE -H "$REP" "$B/pos/2"
 check "silinen PO'nun iş emri de silindi"       404 'BARCODE_NOT_FOUND'      -H "$PROD" "$B/production/lookup/B9"
-expect_sql "silinen iş emrinin okutmaları da silindi" "SELECT COUNT(*) AS n FROM scans" '[{"n":0}]'
+expect_sql "silinen iş emrinin okutmaları da silindi" "SELECT COUNT(*) AS n FROM scans" '[{"n":1}]'
 
 echo "6) Yönlendirici"
 check "olmayan uç"                              404 'ROUTE_NOT_FOUND'        -H "$REP" "$B/yok"
@@ -139,7 +198,7 @@ expect_sql "CHECK: geçersiz durum değeri eklenemez" \
   'CHECK constraint failed'
 expect_sql "migration'lar kayıtlı" \
   "SELECT version FROM schema_migrations ORDER BY version" \
-  '[{"version":"001_init"},{"version":"002_stations"}]'
+  '[{"version":"001_init"},{"version":"002_stations"},{"version":"003_auth"},{"version":"004_new_stations"},{"version":"005_due_date_board"},{"version":"006_remove_old_stations"},{"version":"007_admin"}]'
 if php backend/bin/migrate.php >/dev/null 2>&1; then
   PASS=$((PASS + 1)); echo "  ✓ migrate tekrar çalıştırılabilir (idempotent)"
 else

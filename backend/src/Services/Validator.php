@@ -39,6 +39,20 @@ final class Validator
         return $value === '' ? null : $value;
     }
 
+    /** İsteğe bağlı tarih, YYYY-MM-DD biçiminde ve geçerli bir takvim günü olmalı. */
+    public static function optionalDate(array $input, string $field): ?string
+    {
+        $value = trim((string) ($input[$field] ?? ''));
+        if ($value === '') {
+            return null;
+        }
+        $d = \DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+        if ($d === false || $d->format('Y-m-d') !== $value) {
+            throw HttpException::validation($field, 'Tarih YYYY-AA-GG biçiminde olmalı.');
+        }
+        return $value;
+    }
+
     public static function positiveInt(array $input, string $field, int $default): int
     {
         $value = $input[$field] ?? $default;

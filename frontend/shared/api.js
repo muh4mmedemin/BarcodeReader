@@ -12,31 +12,70 @@ export class ApiError extends Error {
 }
 
 export class ApiClient {
-  constructor({ baseUrl, apiKey }) {
+  /**
+   * @param {{baseUrl: string, token?: string|null, onUnauthorized?: () => void}} options
+   *   onUnauthorized: oturum geçersizse (401) çağrılır; giriş isteği hariç.
+   */
+  constructor({ baseUrl, token = null, onUnauthorized = null }) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
-    this.apiKey = apiKey;
+    this.token = token;
+    this.onUnauthorized = onUnauthorized;
   }
 
-  async request(method, path, body) {
+  /** Ham istek: body JSON nesnesi veya FormData (dosya yükleme) olabilir. Hata durumunda ApiError fırlatır. */
+  async send(method, path, body) {
+    const headers = {};
+    if (this.token) headers.Authorization = `Bearer ${this.token}`;
+    const isForm = body instanceof FormData;
+    if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
+
     let res;
     try {
       res = await fetch(this.baseUrl + path, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': this.apiKey,
-        },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        headers,
+        body: body === undefined ? undefined : (isForm ? body : JSON.stringify(body)),
       });
     } catch {
       throw new ApiError(0, { error: { code: 'NETWORK', message: 'Sunucuya ulaşılamıyor.' } });
     }
 
-    if (res.status === 204) return null;
-    const json = await res.json().catch(() => null);
-    if (!res.ok) throw new ApiError(res.status, json);
-    return json;
+    if (!res.ok) {
+      const json = await res.json().catch(() => null);
+      if (res.status === 401 && path !== '/api/v1/auth/login') this.onUnauthorized?.();
+      throw new ApiError(res.status, json);
+    }
+    return res;
   }
+
+  async request(method, path, body) {
+    const res = await this.send(method, path, body);
+    return res.status === 204 ? null : res.json().catch(() => null);
+  }
+
+  /** Dosyayı indirir ve tarayıcıya kaydettirir; ad sunucunun Content-Disposition başlığından alınır. */
+  async download(path, fallbackName) {
+    const res = await this.send('GET', path);
+    const blob = await res.blob();
+    const cd = res.headers.get('Content-Disposition') ?? '';
+    const utf = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    const plain = /filename="?([^";]+)"?/i.exec(cd);
+    const name = utf ? decodeURIComponent(utf[1]) : (plain ? plain[1] : fallbackName);
+
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+    return name;
+  }
+
+  // Oturum
+  login(username, password) { return this.request('POST', '/api/v1/auth/login', { username, password }); }
+  logout() { return this.request('POST', '/api/v1/auth/logout'); }
+  me() { return this.request('GET', '/api/v1/me'); }
 
   // Sistem
   health() { return this.request('GET', '/api/v1/health'); }
@@ -51,6 +90,10 @@ export class ApiClient {
     const q = new URLSearchParams({ search, limit, offset });
     return this.request('GET', `/api/v1/pos?${q}`);
   }
+  overview() { return this.request('GET', '/api/v1/reports/overview'); }
+  stationReport(days) { return this.request('GET', `/api/v1/reports/stations?days=${days}`); }
+  board() { return this.request('GET', '/api/v1/board'); }
+  boardVersion() { return this.request('GET', '/api/v1/board/version'); }
   getPo(id) { return this.request('GET', `/api/v1/pos/${id}`); }
   createPo(data) { return this.request('POST', '/api/v1/pos', data); }
   updatePo(id, data) { return this.request('PUT', `/api/v1/pos/${id}`, data); }
@@ -59,6 +102,20 @@ export class ApiClient {
   // İş emri
   createWorkOrder(poId, data) { return this.request('POST', `/api/v1/pos/${poId}/work-orders`, data); }
   updateWorkOrder(id, data) { return this.request('PUT', `/api/v1/work-orders/${id}`, data); }
+  moveWorkOrder(id, target) { return this.request('POST', `/api/v1/work-orders/${id}/move`, target); }
+  workOrderHistory(id) { return this.request('GET', `/api/v1/work-orders/${id}/scans`); }
+  exportPo(id) { return this.download(`/api/v1/pos/${id}/export`, `po-${id}.xlsx`); }
+
+  // Excel şablonu
+  templateInfo() { return this.request('GET', '/api/v1/templates/po'); }
+  downloadTemplate() { return this.download('/api/v1/templates/po/file', 'po-sablon.xlsx'); }
+  uploadTemplate(file) {
+    const form = new FormData();
+    form.append('file', file);
+    return this.request('POST', '/api/v1/templates/po', form);
+  }
+  resetTemplate() { return this.request('DELETE', '/api/v1/templates/po'); }
+
   deleteWorkOrder(id) { return this.request('DELETE', `/api/v1/work-orders/${id}`); }
 
   // Üretim

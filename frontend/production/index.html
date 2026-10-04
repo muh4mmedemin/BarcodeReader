@@ -1,47 +1,77 @@
 <!doctype html>
-<html lang="tr">
+<!-- Atölye ekranı: her zaman koyu tema -->
+<html lang="tr" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>İş Emri Okut</title>
+  <title>İş Emri Okut — BarcodeReader</title>
   <link rel="stylesheet" href="../shared/base.css">
   <link rel="stylesheet" href="production.css">
 </head>
 <body>
-  <header class="top">
-    <div class="top-left">
-      <a class="back" href="../">← Ana menü</a>
-      <h1>İş Emri Okut</h1>
-    </div>
-    <span id="server-status" class="muted">Bağlanıyor…</span>
+  <header class="titlebar">
+    <a class="app" href="../">BarcodeReader</a>
+    <span class="crumb">İş Emri Okut</span>
+    <span class="spacer"></span>
+    <a class="tb-item" id="tb-menu" href="../">Ana menü</a>
+    <span class="tb-item" id="tb-user"></span>
+    <a class="tb-item" id="tb-logout" href="#">Çıkış</a>
   </header>
 
-  <main class="scan-screen">
-    <div class="station-picker">
-      <label for="station-select">İstasyon</label>
-      <select id="station-select" class="station-select">
-        <option value="">İstasyon seçin…</option>
-      </select>
-    </div>
+  <main class="hmi">
+    <!-- İstasyon seçimi: hat sırasıyla. Seçili istasyon vurgulu; son okutulan
+         iş emrinin bulunduğu istasyonun alt kenarı yanar. -->
+    <section class="pane">
+      <div class="pane-head">İstasyon</div>
+      <div class="stations" id="stations" role="radiogroup" aria-label="İstasyon"></div>
+    </section>
 
-    <form id="scan-form" autocomplete="off">
+    <form id="scan-form" class="scan" autocomplete="off">
       <label for="barcode-input">Barkod</label>
       <div class="scan-row">
-        <input id="barcode-input" class="scan-input mono" placeholder="Barkodu yazın" autofocus>
-        <button class="primary scan-button" type="submit">Okut</button>
+        <input id="barcode-input" class="mono" inputmode="text">
+        <button class="primary" type="submit">Okut <kbd>Enter</kbd></button>
       </div>
     </form>
 
-    <section id="result" class="result idle">
-      <div class="result-title">Hazır</div>
-      <div class="result-body muted">Barkodu yazıp Enter'a basın veya Okut'a tıklayın.</div>
+    <!-- Telefon kamerası (yalnızca dokunmatik cihazlarda görünür) -->
+    <section class="pane camera" id="camera" hidden>
+      <div class="pane-head">
+        <span>Kamera</span>
+        <button type="button" id="camera-toggle" class="primary">Kamerayı aç</button>
+      </div>
+      <div class="camera-view" id="camera-view" hidden>
+        <video id="camera-video" playsinline muted></video>
+        <i class="camera-aim"></i>
+      </div>
+      <p class="camera-msg muted" id="camera-msg"></p>
     </section>
 
-    <section class="card">
-      <h2>Son okutmalar</h2>
-      <ul id="history" class="history"></ul>
+    <section id="result" class="result idle" aria-live="polite">
+      <div class="result-status">Hazır</div>
+      <div class="result-main mono">—</div>
+      <dl class="result-detail" id="result-detail"></dl>
+    </section>
+
+    <section class="pane">
+      <div class="pane-head">Son okutmalar</div>
+      <table class="log">
+        <thead>
+          <tr><th>Saat</th><th>Barkod</th><th>İstasyon</th><th>Sonuç</th></tr>
+        </thead>
+        <tbody id="history">
+          <tr class="empty"><td colspan="4" class="muted">Henüz okutma yok.</td></tr>
+        </tbody>
+      </table>
     </section>
   </main>
+
+  <footer class="statusbar">
+    <span><i id="sb-led" class="sq"></i><span id="sb-conn">Bağlanıyor…</span></span>
+    <span>İstasyon <b id="sb-station">—</b></span>
+    <span>API <b id="sb-api" class="mono"></b></span>
+    <span class="sb-right mono" id="sb-clock"></span>
+  </footer>
 
   <script type="module" src="app.js"></script>
 </body>

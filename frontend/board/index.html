@@ -1,0 +1,63 @@
+<!doctype html>
+<!-- Atölye panosu: TV ekranı, her zaman koyu tema, otomatik yenilenir -->
+<html lang="tr" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Atölye Panosu — BarcodeReader</title>
+  <link rel="stylesheet" href="../shared/base.css">
+  <link rel="stylesheet" href="board.css">
+</head>
+<body>
+  <header class="titlebar">
+    <span class="app">BarcodeReader</span>
+    <span class="crumb">Atölye Panosu</span>
+    <span class="spacer"></span>
+    <a class="tb-item" id="tb-menu" href="../">Ana menü</a>
+    <a class="tb-item" id="tb-fullscreen" href="#">Tam ekran</a>
+    <span class="tb-item" id="tb-user"></span>
+    <a class="tb-item" id="tb-logout" href="#">Çıkış</a>
+  </header>
+
+  <main class="board">
+    <div class="board-head">
+      <div class="clock mono" id="clock"></div>
+      <div class="date" id="date"></div>
+    </div>
+
+    <dl class="kpis" id="kpis"></dl>
+
+    <section class="pane">
+      <div class="pane-head">İstasyonlarda bekleyen iş emri</div>
+      <div class="stations" id="stations"></div>
+    </section>
+
+    <div class="cols">
+      <section class="pane">
+        <div class="pane-head">Son okutmalar</div>
+        <table class="recent">
+          <thead><tr><th>Saat</th><th>MA kodu</th><th>PO</th><th>İstasyon</th></tr></thead>
+          <tbody id="recent"></tbody>
+        </table>
+      </section>
+
+      <section class="pane">
+        <div class="pane-head">Termin takibi</div>
+        <table class="due">
+          <thead><tr><th>PO</th><th>Müşteri</th><th>Termin</th><th class="num">İE</th></tr></thead>
+          <tbody id="due"></tbody>
+        </table>
+      </section>
+    </div>
+  </main>
+
+  <footer class="statusbar">
+    <span><i id="sb-led" class="sq"></i><span id="sb-conn">Bağlanıyor…</span></span>
+    <span>Son değişiklik <b id="sb-updated" class="mono">—</b></span>
+    <span>API <b id="sb-api" class="mono"></b></span>
+    <span class="sb-right mono" id="sb-clock"></span>
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -3,5 +3,5 @@ RewriteEngine On
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteRule ^ index.php [QSA,L]
 
-# X-API-Key gibi başlıkların PHP'ye ulaşması için
-SetEnvIf X-API-Key "(.*)" HTTP_X_API_KEY=$1
+# Authorization başlığının PHP'ye ulaşması için
+SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>İş Emri Taşıma — BarcodeReader</title>
+  <link rel="stylesheet" href="../shared/base.css">
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <header class="titlebar">
+    <a class="app" href="./">BarcodeReader</a>
+    <span class="crumb">İş Emri Taşıma</span>
+    <span class="spacer"></span>
+    <span class="tb-item" id="tb-user"></span>
+    <a class="tb-item" id="tb-logout" href="#">Çıkış</a>
+  </header>
+
+  <main class="admin">
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="PO no, müşteri, MA kodu veya barkod" aria-label="Ara">
+      <div class="seg" id="filter" role="radiogroup" aria-label="Durum">
+        <button type="button" role="radio" data-status="">Tümü</button>
+        <button type="button" role="radio" data-status="open">Bekliyor</button>
+        <button type="button" role="radio" data-status="in_progress">Hatta</button>
+        <button type="button" role="radio" data-status="done">Tamamlandı</button>
+        <button type="button" role="radio" data-status="cancelled">İptal</button>
+      </div>
+      <button type="button" id="refresh">Yenile</button>
+    </div>
+
+    <section class="pane">
+      <div class="pane-head">
+        <span>İş emirleri</span>
+        <span class="muted mono" id="count"></span>
+      </div>
+      <div class="table-wrap">
+        <table class="wo-table">
+          <thead>
+            <tr><th>PO</th><th>MA kodu</th><th>Barkod</th><th>Açıklama</th><th class="num">Adet</th><th>Konum</th><th>Son hareket</th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <footer class="statusbar">
+    <span><i id="sb-led" class="sq"></i><span id="sb-conn">Bağlanıyor…</span></span>
+    <span>API <b id="sb-api" class="mono"></b></span>
+    <span class="sb-right mono" id="sb-clock"></span>
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

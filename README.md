@@ -1,31 +1,36 @@
 # BarcodeReader — Barkod / İş Emri Takip Sistemi
 
-Müşteri temsilcisi PO (satın alma siparişi) açar ve PO'lara iş emri ekler. Üretimde her istasyon,
-iş emrinin barkodunu okutarak iş emrini kendi istasyonuna alır. Temsilci her iş emrinin şu an hangi
-istasyonda olduğunu görür. Son istasyonda (Paketleme) okutulan iş emri tamamlanır.
+Müşteri temsilcisi PO (satın alma siparişi) açar ve PO'lara iş emri ekler. Üretimde her istasyon
+bilgisayarı kendi hesabıyla giriş yapar ve iş emrinin barkodunu okutarak iş emrini kendi
+istasyonuna alır. Son istasyonda (Paketleme) okutulan iş emri tamamlanır. Temsilci her iş emrinin
+şu an nerede olduğunu, hangi istasyonlardan ne zaman geçtiğini, PO'ların termin durumunu ve
+istasyon sürelerini görür; PO'yu kendi Excel şablonuyla dışa aktarır. Atölyedeki ekranda canlı
+güncellenen bir pano çalışır.
 
 Bu belge sistemin **nasıl çalıştığını, nasıl test edileceğini ve neyin henüz eksik olduğunu**
-anlatır. Her iddianın yanında kodda nerede yapıldığını gösteren bir bağlantı (`dosya:satır`) vardır.
-Davranışlarla ilgili iddiaların hepsi [otomatik test script'i](scripts/test.sh) ile doğrulanır
-(bkz. [Test etme](#11-test-etme)).
+anlatır. İddiaların yanında kodda nerede yapıldığını gösteren bağlantılar (`dosya:satır`) vardır.
+Davranışlarla ilgili iddialar [otomatik test script'i](scripts/test.sh) ile doğrulanır
+(bkz. [Test etme](#12-test-etme)).
 
 ## İçindekiler
 
 1. [Hızlı başlangıç](#1-hızlı-başlangıç)
 2. [Mimari](#2-mimari)
 3. [Bir isteğin yolculuğu](#3-bir-isteğin-yolculuğu)
-4. [Roller ve yetkiler](#4-roller-ve-yetkiler)
+4. [Giriş, roller ve yetkiler](#4-giriş-roller-ve-yetkiler)
 5. [Veri modeli](#5-veri-modeli)
 6. [Benzersizlik kuralları](#6-benzersizlik-kuralları)
 7. [Veri doğrulama](#7-veri-doğrulama)
 8. [İstasyon ve okutma akışı](#8-istasyon-ve-okutma-akışı)
-9. [Migration (şema güncelleme) sistemi](#9-migration-şema-güncelleme-sistemi)
-10. [Arayüz (frontend)](#10-arayüz-frontend)
-11. [Test etme](#11-test-etme)
-12. [Yapılandırma](#12-yapılandırma)
-13. [Bilinen sınırlamalar](#13-bilinen-sınırlamalar)
-14. [Güvenlik durumu](#14-güvenlik-durumu)
-15. [Geliştirme rehberi](#15-geliştirme-rehberi)
+9. [Raporlar, analiz ve pano](#9-raporlar-analiz-ve-pano)
+10. [Excel'e aktarma ve şablon](#10-excele-aktarma-ve-şablon)
+11. [Arayüz (frontend)](#11-arayüz-frontend)
+12. [Test etme](#12-test-etme)
+13. [Migration (şema güncelleme) sistemi](#13-migration-şema-güncelleme-sistemi)
+14. [Yapılandırma](#14-yapılandırma)
+15. [Bilinen sınırlamalar](#15-bilinen-sınırlamalar)
+16. [Güvenlik durumu](#16-güvenlik-durumu)
+17. [Geliştirme rehberi](#17-geliştirme-rehberi)
 
 ---
 
@@ -35,8 +40,9 @@ Davranışlarla ilgili iddiaların hepsi [otomatik test script'i](scripts/test.s
 
 | Gereksinim | Neden | Kontrol |
 |---|---|---|
-| PHP 8.1+ (8.4 ile test edildi) | Backend (kod `readonly` özellikler ve first-class callable `fn(...)` sözdizimi kullanır; ikisi de 8.1 ile geldi) | `php -v` |
-| `pdo_sqlite` eklentisi | Veritabanı bağlantısı. Yoksa backend açıkça hata verir ([Database.php:15-16](backend/src/Database.php#L15-L16)) | `php -m \| grep pdo_sqlite` |
+| PHP 8.1+ (8.4 ile test edildi) | Backend (`readonly` özellikler ve `fn(...)` sözdizimi 8.1 ile geldi) | `php -v` |
+| `pdo_sqlite` eklentisi | Veritabanı. Yoksa backend açıkça hata verir ([Database.php:15-16](backend/src/Database.php#L15-L16)) | `php -m \| grep pdo_sqlite` |
+| `dom` ve `zlib` eklentileri | Excel dosyası okuma/yazma. PHP ile çoğunlukla hazır gelir | `php -m \| grep -E 'dom\|zlib'` |
 | `curl` | Sadece test script'i için | `curl --version` |
 
 Debian/Ubuntu'da SQLite eklentisini kurmak için:
@@ -45,8 +51,8 @@ Debian/Ubuntu'da SQLite eklentisini kurmak için:
 sudo apt install php8.4-sqlite3
 ```
 
-`mbstring` eklentisi **gerekmez**. Metin uzunluğu bilerek regex ile sayılıyor
-([Validator.php:36](backend/src/Services/Validator.php#L36)).
+**Gerekmeyenler:** `mbstring` (metin uzunluğu regex ile sayılır, [Validator.php:36](backend/src/Services/Validator.php#L36)),
+`zip` eklentisi ve Composer (Excel için zip okuma/yazma saf PHP ile yazıldı, [Zip.php](backend/src/Excel/Zip.php)).
 
 ### Çalıştırma
 
@@ -56,18 +62,41 @@ sudo apt install php8.4-sqlite3
 
 Bu komut ([scripts/dev.sh](scripts/dev.sh)):
 
-1. Veritabanını hazırlar ve örnek veri ekler. Örnek veri zaten varsa atlar ([dev.sh:11](scripts/dev.sh#L11), [migrate.php:26](backend/bin/migrate.php#L26)).
-2. **API sunucusunu** `:8000` portunda başlatır ([dev.sh:13](scripts/dev.sh#L13)).
-3. **Arayüz sunucusunu** `:5173` portunda, ayrı bir süreç olarak başlatır ([dev.sh:15](scripts/dev.sh#L15)).
+1. Veritabanını hazırlar (bekleyen migration'ları uygular) ve örnek veri ekler. Örnek veri zaten varsa atlar ([migrate.php:26](backend/bin/migrate.php#L26)).
+2. **API sunucusunu** `:8000` portunda başlatır.
+3. **Arayüz sunucusunu** `:5173` portunda, ayrı bir süreç olarak başlatır.
+
+Sunucular `0.0.0.0` adresinde dinler; ağdaki diğer bilgisayarlar da bağlanabilir (bkz. [14](#başka-bir-bilgisayardan-erişim)).
+Durdurmak için `Ctrl+C`.
 
 | Adres | Ne var |
 |---|---|
-| http://localhost:5173/ | **Ana menü** |
-| http://localhost:5173/rep/ | PO Oluşturma (temsilci) |
-| http://localhost:5173/production/ | İş Emri Okut (üretim) |
+| http://localhost:5173/ | Giriş yapılmamışsa giriş ekranına, yapılmışsa rolün sayfasına yönlendirir |
 | http://localhost:8000/api/v1/health | API sağlık kontrolü |
 
-**Örnek veri:** `PO-2026-001` numaralı bir PO ve iki iş emri gelir:
+### Hesaplar
+
+Başlangıç hesaplarının hepsinin şifresi **`123`**. Gerçek kullanıma geçmeden değiştirin
+(bkz. [16](#16-güvenlik-durumu)).
+
+| Kullanıcı | Rol | Girişten sonra açılan sayfa | Ne yapabilir |
+|---|---|---|---|
+| `mami` | Müşteri temsilcisi (`rep`) | Ana menü | Her şey: PO/iş emri, okutma (istasyonu ekrandan seçer), raporlar, pano, Excel |
+| `elektrik` | Üretim (`production`) | İş Emri Okut, istasyon **Elektrik** sabit | Sadece okutma |
+| `freze` | Üretim | İş Emri Okut, **Freze** sabit | Sadece okutma |
+| `cnc` | Üretim | İş Emri Okut, **CNC** sabit | Sadece okutma |
+| `kalite` | Üretim | İş Emri Okut, **Kalite Kontrol** sabit | Sadece okutma |
+| `paketleme` | Üretim | İş Emri Okut, **Paketleme** sabit | Sadece okutma |
+| `pano` | Pano (`board`) | Atölye Panosu | Sadece panoyu görür |
+| `admin` | Yönetici (`admin`) | İş Emri Taşıma | Sadece iş emirlerini istediği konuma taşır (her istasyon, Bekliyor, İptal; tamamlanmış iş emri dahil). Kullanıcılar üzerinde yetkisi yok |
+
+Hesaplar migration dosyalarında oluşturulur:
+[003_auth.sql](backend/database/migrations/003_auth.sql) (`mami`, `kalite`, `paketleme`),
+[004_new_stations.sql](backend/database/migrations/004_new_stations.sql) (`elektrik`, `freze`, `cnc`),
+[005_due_date_board.sql](backend/database/migrations/005_due_date_board.sql) (`pano`),
+[007_admin.sql](backend/database/migrations/007_admin.sql) (`admin`).
+
+**Örnek veri:** `PO-2026-001` numaralı bir PO ve iki iş emri:
 `MA-0001` / `8690000000011` (3 adet) ve `MA-0002` / `8690000000028` (1 adet).
 
 Veritabanı dosyası `backend/storage/app.sqlite`. Git'e eklenmez ([.gitignore](.gitignore)).
@@ -77,154 +106,193 @@ Veritabanı dosyası `backend/storage/app.sqlite`. Git'e eklenmez ([.gitignore](
 ## 2. Mimari
 
 ```
- ┌───────────────────────┐   ┌───────────────────────┐   ┌─────────────────────────┐
- │ Ana menü  /           │   │                       │   │ İleride: senin ürettiğin│
- │  ├─ PO Oluşturma /rep │   │ İş Emri Okut          │   │ okuma cihazları, mobil  │
- │  │  (anahtar: rep)    │   │ /production           │   │ uygulama ...            │
- │  └─────────────────── │   │ (anahtar: production) │   │                         │
- └──────────┬────────────┘   └──────────┬────────────┘   └────────────┬────────────┘
-            │        HTTP + JSON, her istekte X-API-Key başlığı        │
-            └──────────────────────────┬──────────────────────────────┘
-                              ┌────────▼─────────┐
-                              │ Backend (PHP)    │  REST API: /api/v1/...
-                              │ :8000            │  Sözleşme: docs/API.md
-                              └────────┬─────────┘
-                              ┌────────▼─────────┐
-                              │ SQLite           │  backend/storage/app.sqlite
-                              └──────────────────┘
+ ┌─────────────────────────────────────┐   ┌──────────────────────┐   ┌───────────────────────┐
+ │ Temsilci (mami)  /  ana menü        │   │ İstasyon PC'leri     │   │ İleride: senin        │
+ │  1 PO Oluşturma   4 Üretim Analizi  │   │ /production          │   │ ürettiğin okuma       │
+ │  2 İş Emri Okut   5 Atölye Panosu   │   │ (elektrik, freze...) │   │ cihazları, mobil ...  │
+ │  3 PO Takip       6 Excel Şablonu   │   ├──────────────────────┤   │                       │
+ │                                     │   │ Atölye ekranı /board │   │                       │
+ └──────────────────┬──────────────────┘   └──────────┬───────────┘   └───────────┬───────────┘
+                    │   HTTP + JSON, her istekte "Authorization: Bearer <token>"  │
+                    └──────────────────────────────┬──────────────────────────────┘
+                                          ┌────────▼─────────┐
+                                          │ Backend (PHP)    │  REST API: /api/v1/...
+                                          │ :8000            │
+                                          └────────┬─────────┘
+                                          ┌────────▼─────────┐
+                                          │ SQLite           │  backend/storage/app.sqlite
+                                          └──────────────────┘
 ```
 
 ### Temel kararlar
 
 - **Backend ile arayüz birbirinden bağımsız.**
-  - Backend hiç HTML üretmez, sadece JSON döner ([Response.php:17](backend/src/Http/Response.php#L17)).
+  - Backend HTML üretmez; JSON döner ([Response.php:17](backend/src/Http/Response.php#L17)). Tek istisna, Excel dosyası indirme ucudur ([Response.php:27](backend/src/Http/Response.php#L27)).
   - İki ayrı sunucu, iki ayrı portta çalışır.
-  - Arayüz, backend'e yalnızca HTTP üzerinden ulaşır ([api.js:23](frontend/shared/api.js#L23)).
-  - Yeni bir cihaz için client yazarken backend'e dokunmak gerekmez; [docs/API.md](docs/API.md) sözleşmesine uymak yeterli.
-- **Tüm iş kuralları backend'de.** Arayüz kural uygulamaz; sadece sorar ve gösterir. Arayüzün yaptığı anlık benzersizlik kontrolü bile backend'deki `/check` ucunu çağırır ([rep/app.js:53](frontend/rep/app.js#L53)).
-- **Framework ve Composer yok.** Sınıflar 8 satırlık bir otomatik yükleyiciyle yüklenir ([bootstrap.php](backend/bootstrap.php)).
-- **Arayüzde build adımı yok.** Saf HTML/CSS/JS ve tarayıcının yerel ES modülleri.
+  - Arayüz backend'e yalnızca HTTP üzerinden ulaşır ([shared/api.js](frontend/shared/api.js)).
+  - Yeni bir cihaz için client yazarken backend'e dokunmak gerekmez; API uçları [bölüm 4](#uçlar-ve-izinli-roller)'te listelidir.
+- **Tüm iş kuralları ve yetkiler backend'de.** Arayüz kural uygulamaz; sadece sorar ve gösterir. Bir butonu gizlemek yetki vermez, göstermek de yetki almaz.
+- **Framework ve Composer yok.** Sınıflar küçük bir otomatik yükleyiciyle yüklenir ([bootstrap.php](backend/bootstrap.php)).
+- **Arayüzde build adımı yok.** Saf HTML/CSS/JS ve tarayıcının yerel ES modülleri. Dışarıdan kütüphane veya yazı tipi yüklenmez (fabrika ağında internet olmayabilir).
 
 ### Klasör yapısı
 
 ```
 backend/
-  public/index.php            Tek giriş noktası: CORS, kimlik, hata yakalama, bağımlılıkları kurma
-  public/.htaccess            Apache ile yayınlarken tüm istekleri index.php'ye yönlendirir
+  public/index.php            Tek giriş noktası: CORS, oturum, hata yakalama, bağımlılıkları kurma
+  public/.htaccess            Apache ile yayınlarken istekleri index.php'ye yönlendirir
   routes.php                  Tüm API uçları ve her uca hangi rolün erişebileceği
-  config.php                  DB yolu, CORS, API anahtarları (ortam değişkeniyle ezilebilir)
-  bootstrap.php               Otomatik yükleyici + config
+  config.php                  DB yolu, CORS, saat dilimi, Excel şablon yolları
+  bootstrap.php               Otomatik yükleyici, config, saat dilimi
   bin/migrate.php             Migration durumunu gösterir; --seed ile örnek veri ekler
-  database/migrations/        Numaralı şema dosyaları (001_init.sql, 002_stations.sql)
-  storage/                    SQLite dosyası (git'e girmez)
+  bin/build-po-template.php   Varsayılan Excel şablonunu (templates/po.xlsx) üretir
+  database/migrations/        Numaralı şema dosyaları (001 … 006)
+  templates/po.xlsx           Varsayılan PO Excel şablonu
+  storage/                    SQLite dosyası ve yüklenen özel şablon (git'e girmez)
   src/
     Database.php              Bağlantı, PRAGMA ayarları, migration çalıştırıcı
     Http/                     Request, Response, Router, HttpException
-    Services/                 İş kuralları: PO, iş emri, okutma, istasyon, benzersizlik, doğrulama
+    Services/                 İş kuralları: giriş, PO, iş emri, okutma, istasyon, rapor,
+                              Excel dışa aktarma, benzersizlik, doğrulama
+    Excel/                    Zip.php (saf PHP zip), XlsxTemplate.php (şablon doldurucu)
     Controllers/              HTTP isteğini servise bağlayan ince katman
 frontend/
-  index.html, menu.css/js     Ana menü
-  rep/                        PO Oluşturma sayfası (temsilci)
-  production/                 İş Emri Okut sayfası (üretim)
+  login.html, login.js        Giriş ekranı
+  index.html, menu.css/js     Ana menü (temsilci)
+  rep/                        PO Oluşturma
+  production/                 İş Emri Okut
+  report/                     PO Takip
+  analysis/                   Üretim Analizi
+  board/                      Atölye Panosu
+  template/                   Excel Şablonu
+  admin/                      İş Emri Taşıma (yönetici)
   shared/api.js               Tek API istemcisi (tüm sayfalar bunu kullanır)
+  shared/api-base.js          API adresini sayfanın açıldığı adresten türetir
+  shared/auth.js              Oturum saklama, giriş zorunluluğu, rol yönlendirmesi
+  shared/statusbar.js         Alt durum çubuğu (bağlantı, API adresi, saat)
+  shared/history.js           İş emri istasyon geçmişi tablosu, süre ve saat biçimleme
+  shared/distribution.js      İş emirlerinin konuma göre dağılımı
+  shared/due.js               Termin durumu (gecikti / yaklaşıyor / zamanında)
   shared/base.css             Ortak stil, açık/koyu tema
-docs/API.md                   API sözleşmesi (yeni client yazanlar için)
 scripts/dev.sh                Geliştirme sunucularını başlatır
-scripts/test.sh               Uçtan uca otomatik test (50 kontrol)
+scripts/test.sh               Uçtan uca otomatik test (84 kontrol)
 ```
 
 ---
 
 ## 3. Bir isteğin yolculuğu
 
-Örnek: üretim ekranında `B9` barkodu Kaynak istasyonunda okutuluyor.
+Örnek: Freze istasyonundaki bilgisayarda `freze` kullanıcısı `B9` barkodunu okutuyor.
 
 ```
-Tarayıcı ──POST /api/v1/production/scan  {"barcode":"B9","station_id":3}──► index.php
+Tarayıcı ──POST /api/v1/production/scan  {"barcode":"B9"}  + Authorization: Bearer <token>──► index.php
 ```
 
 | # | Adım | Kod |
 |---|---|---|
-| 1 | Sayfa isteği, kendi anahtarını `X-API-Key` başlığına koyarak gönderir | [api.js:27](frontend/shared/api.js#L27) |
-| 2 | `index.php` isteği okur ve CORS başlıklarını ekler. Tarayıcının ön kontrol (`OPTIONS`) isteğine boş cevap verir | [index.php:21-27](backend/public/index.php#L21-L27) |
-| 3 | Anahtardan rol bulunur. Anahtar var ama tanınmıyorsa **401 INVALID_API_KEY** döner | [index.php:31-35](backend/public/index.php#L31-L35) |
-| 4 | Veritabanına bağlanılır; bekleyen migration varsa uygulanır | [index.php:37](backend/public/index.php#L37), [Database.php:34](backend/src/Database.php#L34) |
-| 5 | Router yolu eşleştirir ve rol bu uç için izinli mi bakar. İzinsizse **403**, metod yanlışsa **405**, yol yoksa **404** döner | [Router.php:34-45](backend/src/Http/Router.php#L34-L45) |
-| 6 | Controller girdiyi alır; `station_id` yoksa **422** döner | [ProductionController.php:41-45](backend/src/Controllers/ProductionController.php#L41-L45) |
-| 7 | Servis iş kurallarını uygular (bkz. [bölüm 8](#8-istasyon-ve-okutma-akışı)) | [WorkOrderService.php:125](backend/src/Services/WorkOrderService.php#L125) |
-| 8 | Cevap her zaman `{"data": ...}` zarfıyla döner | [Response.php:17](backend/src/Http/Response.php#L17) |
-| 9 | Hatalar tek tip `{"error":{"code","message","field"}}` biçimine çevrilir. Anahtarsız istek 403 yerine **401 UNAUTHORIZED** alır. Beklenmeyen hatalar loglanır ve dışarıya ayrıntı verilmeden **500** döner | [index.php:52-60](backend/public/index.php#L52-L60), [HttpException.php:37](backend/src/Http/HttpException.php#L37) |
+| 1 | Sayfa, girişte aldığı token'ı `Authorization` başlığına koyarak isteği gönderir | [api.js:26](frontend/shared/api.js#L26) |
+| 2 | `index.php` CORS başlıklarını ekler; tarayıcının ön kontrol (`OPTIONS`) isteğine boş cevap verir | [index.php:28-33](backend/public/index.php#L28-L33) |
+| 3 | Veritabanına bağlanılır; bekleyen migration varsa uygulanır | [index.php:36](backend/public/index.php#L36) |
+| 4 | Token varsa oturumdan kullanıcı bulunur. Token geçersiz veya süresi dolmuşsa **401 SESSION_EXPIRED** | [index.php:40-45](backend/public/index.php#L40-L45) |
+| 5 | Router yolu eşleştirir ve kullanıcının rolü bu uç için izinli mi bakar. İzinsizse **403**, metod yanlışsa **405**, yol yoksa **404** | [Router.php:34-36](backend/src/Http/Router.php#L34-L36) |
+| 6 | Controller, üretim kullanıcısının istasyonunu **hesabından** alır; gövdede `station_id` gönderilse bile yok sayar | [ProductionController.php:41-52](backend/src/Controllers/ProductionController.php#L41-L52) |
+| 7 | Servis okutma kurallarını uygular (bkz. [bölüm 8](#8-istasyon-ve-okutma-akışı)) ve okutmayı kullanıcıyla birlikte kaydeder | [WorkOrderService.php:212](backend/src/Services/WorkOrderService.php#L212) |
+| 8 | Cevap `{"data": ...}` zarfıyla döner | [Response.php:17](backend/src/Http/Response.php#L17) |
+| 9 | Hatalar tek tip `{"error":{"code","message","field"}}` biçimine çevrilir. Girişsiz istek 403 yerine **401 UNAUTHORIZED** alır. Beklenmeyen hatalar loglanır ve ayrıntı verilmeden **500** döner | [index.php:66-74](backend/public/index.php#L66-L74), [HttpException.php:37](backend/src/Http/HttpException.php#L37) |
 
 ---
 
-## 4. Roller ve yetkiler
+## 4. Giriş, roller ve yetkiler
 
-Rol, istekle gelen API anahtarından belirlenir ([config.php:16-19](backend/config.php#L16-L19)):
+### Giriş nasıl çalışır
 
-| Anahtar (geliştirme) | Rol | Kullanan sayfa |
+1. Giriş ekranı `POST /auth/login` ucuna kullanıcı adı ve şifreyi gönderir ([login.js](frontend/login.js)).
+2. Şifre bcrypt özetiyle karşılaştırılır ([AuthService.php:29](backend/src/Services/AuthService.php#L29)). Pasif hesaplar giriş yapamaz. Kullanıcı adında büyük/küçük harf fark etmez.
+3. Başarılıysa 32 baytlık rastgele bir token üretilir ([AuthService.php:35](backend/src/Services/AuthService.php#L35)). Veritabanına token'ın kendisi değil **SHA-256 özeti** yazılır ([AuthService.php:38](backend/src/Services/AuthService.php#L38)); veritabanı dosyası ele geçse bile oturumlar kullanılamaz.
+4. Oturum **7 gün** geçerlidir ([AuthService.php:12](backend/src/Services/AuthService.php#L12)). Süresi dolan oturumlar yeni girişlerde temizlenir.
+5. Token ve kullanıcı bilgisi tarayıcıda saklanır ([shared/auth.js](frontend/shared/auth.js)). Her sayfa açılışta oturum ister; yoksa giriş ekranına, rolü o sayfaya yetkili değilse kendi sayfasına yönlendirir.
+6. Sunucu 401 dönerse (oturum silinmiş, süresi dolmuş) sayfa otomatik olarak giriş ekranına döner.
+7. **Çıkış** oturumu sunucudan siler; o token bir daha kullanılamaz.
+
+### Roller
+
+| Rol | Sayfalar | İstasyon |
 |---|---|---|
-| `dev-rep-key` | `rep` | PO Oluşturma ([rep/config.js:4](frontend/rep/config.js#L4)) |
-| `dev-production-key` | `production` | İş Emri Okut ([production/config.js:4](frontend/production/config.js#L4)) |
+| `rep` (müşteri temsilcisi) | Tüm sayfalar | Okutmada istasyonu ekrandan seçer |
+| `production` (istasyon) | Sadece İş Emri Okut | Hesabına sabittir (`users.station_id`); ekranda değiştirilemez, API'de de gövdeden gelen istasyon yok sayılır |
+| `board` (atölye ekranı) | Sadece Atölye Panosu | — |
+| `admin` (yönetici) | Sadece İş Emri Taşıma | Taşırken hedefi kendisi seçer |
 
-Her ucun izinli rolleri [routes.php](backend/routes.php) içinde tanımlı:
+### Uçlar ve izinli roller
 
-| Uç | rep | production | Satır |
-|---|:-:|:-:|---|
-| `GET /health` | herkese açık | herkese açık | [routes.php:25](backend/routes.php#L25) |
-| `GET /me` | ✓ | ✓ | [routes.php:26](backend/routes.php#L26) |
-| `GET /check` (anlık benzersizlik kontrolü) | ✓ | ✗ | [routes.php:27](backend/routes.php#L27) |
-| PO uçları (listele, oluştur, gör, güncelle, sil) | ✓ | ✗ | [routes.php:30-34](backend/routes.php#L30-L34) |
-| İş emri uçları (listele, ekle, gör, güncelle, sil) | ✓ | ✗ | [routes.php:37-41](backend/routes.php#L37-L41) |
-| `GET /stations` | ✓ | ✓ | [routes.php:44](backend/routes.php#L44) |
-| `GET /production/lookup/{barcode}` | ✓ | ✓ | [routes.php:45](backend/routes.php#L45) |
-| `POST /production/scan` | ✗ | ✓ | [routes.php:46](backend/routes.php#L46) |
+Hepsi [routes.php](backend/routes.php) içinde. Yetki kontrolü sunucuda yapılır ([Router.php:34](backend/src/Http/Router.php#L34)).
 
-Yetki kontrolü sunucuda yapılır ([Router.php:34](backend/src/Http/Router.php#L34)). Arayüzde bir
-butonu gizlemek yetki vermez, kaldırmak da yetki almaz.
-**Kanıt:** test bölüm 1'deki 8 kontrol.
+| Uç | rep | production | board | admin |
+|---|:-:|:-:|:-:|:-:|
+| `GET /health`, `POST /auth/login` | herkese açık | herkese açık | herkese açık | herkese açık |
+| `GET /me`, `POST /auth/logout` | ✓ | ✓ | ✓ | ✓ |
+| `GET /check` (anlık benzersizlik kontrolü) | ✓ | ✗ | ✗ | ✗ |
+| PO: `GET/POST /pos`, `GET/PUT/DELETE /pos/{id}` | ✓ | ✗ | ✗ | ✗ |
+| İş emri: `GET/POST /pos/{poId}/work-orders`, `GET/PUT/DELETE /work-orders/{id}` | ✓ | ✗ | ✗ | ✗ |
+| `GET /work-orders/{id}/scans` (istasyon geçmişi) | ✓ | ✗ | ✗ | ✓ |
+| `POST /work-orders/{id}/move` (taşıma) | ✗ | ✗ | ✗ | ✓ |
+| `GET /reports/overview` (PO Takip) | ✓ | ✗ | ✗ | ✓ |
+| `GET /reports/stations?days=N` (analiz) | ✓ | ✗ | ✗ | ✗ |
+| `GET /pos/{id}/export` (Excel) | ✓ | ✗ | ✗ | ✗ |
+| Şablon: `GET/POST/DELETE /templates/po`, `GET /templates/po/file` | ✓ | ✗ | ✗ | ✗ |
+| `GET /board`, `GET /board/version` | ✓ | ✗ | ✓ | ✗ |
+| `GET /stations` | ✓ | ✓ | ✗ | ✓ |
+| `GET /production/lookup/{barcode}`, `POST /production/scan` | ✓ | ✓ | ✗ | ✗ |
+
+Tüm yollar `/api/v1` ile başlar. Başarılı yanıt `{"data": ..., "meta": ...}` (`meta` sadece
+listelerde), hata yanıtı `{"error": {"code", "message", "field"}}`. `DELETE` ve çıkış `204` döner.
+
+**Kanıt:** test bölüm 1 (10 kontrol) ve bölüm 4'teki yetki kontrolleri (pano kullanıcısı PO
+göremez / okutamaz, üretim kullanıcısı pano, rapor, geçmiş ve Excel göremez, üretim kullanıcısının
+istasyonu sabit).
 
 ---
 
 ## 5. Veri modeli
 
-Şema iki migration dosyasından oluşur:
-[001_init.sql](backend/database/migrations/001_init.sql) ve [002_stations.sql](backend/database/migrations/002_stations.sql).
-
 ```
-purchase_orders 1 ──── * work_orders * ──── 0..1 stations
-                              │                     │
-                              1                     1
-                              │                     │
-                              * scans * ────────────┘
+purchase_orders 1 ──── * work_orders * ──── 0..1 stations ◄──── 0..1 users ──── * sessions
+                              │                     │                 │
+                              1                     1                 │
+                              │                     │                 │
+                              * scans * ────────────┘                 │
+                                  * ──────────────────────────────────┘ (okutan kullanıcı)
 ```
 
 | Tablo | Sütunlar | Önemli kısıtlar |
 |---|---|---|
-| `purchase_orders` | id, po_number, customer, note, created_at, updated_at | `po_number` UNIQUE + NOCASE ([001:9](backend/database/migrations/001_init.sql#L9)) |
-| `work_orders` | id, po_id, ma_code, barcode, description, quantity, status, current_station_id, created_at, updated_at | `ma_code`, `barcode` UNIQUE + NOCASE ([001:20-21](backend/database/migrations/001_init.sql#L20-L21)); `quantity > 0` ([001:23](backend/database/migrations/001_init.sql#L23)); `status` yalnızca `open`, `in_progress`, `done`, `cancelled` olabilir ([001:26](backend/database/migrations/001_init.sql#L26)); PO silinince iş emri de silinir ([001:19](backend/database/migrations/001_init.sql#L19)) |
-| `stations` | id, code, name, sort_order, is_final, active | `code` UNIQUE ([002:6](backend/database/migrations/002_stations.sql#L6)); 8 istasyon hazır gelir ([002:13-21](backend/database/migrations/002_stations.sql#L13-L21)) |
-| `scans` | id, work_order_id, station_id, scanned_at | İş emri silinince okutma kayıtları da silinir ([001:36](backend/database/migrations/001_init.sql#L36)) |
-| `schema_migrations` | version, applied_at | Hangi migration'ın uygulandığını tutar ([Database.php:48](backend/src/Database.php#L48)) |
+| `purchase_orders` | id, po_number, customer, note, due_date, created_at, updated_at | `po_number` UNIQUE + NOCASE. `due_date` (termin) isteğe bağlı, `YYYY-MM-DD` ([005](backend/database/migrations/005_due_date_board.sql)) |
+| `work_orders` | id, po_id, ma_code, barcode, description, quantity, status, current_station_id, created_at, updated_at | `ma_code`, `barcode` UNIQUE + NOCASE; `quantity > 0`; `status` yalnızca `open`, `in_progress`, `done`, `cancelled`; PO silinince iş emri de silinir ([001](backend/database/migrations/001_init.sql)) |
+| `stations` | id, code, name, sort_order, is_final, active | `code` UNIQUE ([002](backend/database/migrations/002_stations.sql)) |
+| `scans` | id, work_order_id, station_id, user_id, kind, status, scanned_at | Hareket kayıtları. İş emri silinince bunlar da silinir. `user_id` hareketi yapan kullanıcı; `kind` `scan` (okutma) veya `move` (yönetici taşıması); `status` hareketten sonraki durum. Bekliyor/İptal'e taşımada `station_id` boştur ([007](backend/database/migrations/007_admin.sql)) |
+| `users` | id, username, password_hash, role, station_id, active, created_at | `username` UNIQUE + NOCASE; `role` yalnızca `rep`, `production`, `board`, `admin`; `production` rolünde istasyon zorunlu ([005](backend/database/migrations/005_due_date_board.sql)) |
+| `sessions` | token_hash, user_id, created_at, expires_at | Kullanıcı silinince oturumları da silinir ([003](backend/database/migrations/003_auth.sql)) |
+| `schema_migrations` | version, applied_at | Hangi migration'ın uygulandığını tutar |
 
 **Durum (`status`) anlamları:**
 
 | Değer | Arayüzde | Ne zaman olur |
 |---|---|---|
 | `open` | Bekliyor | İş emri eklendiğinde |
-| `in_progress` | **İstasyonun adı** (ör. "Kaynak") | Son istasyon dışında bir istasyonda okutulunca |
+| `in_progress` | **İstasyonun adı** (ör. "Freze") | Son istasyon dışında bir istasyonda okutulunca |
 | `done` | Tamamlandı | Son istasyonda (Paketleme) okutulunca |
 | `cancelled` | İptal | Yalnızca API ile elle (`PUT /work-orders/{id}`) |
 
-"İstasyonun adı" gösterimi [api.js:80](frontend/shared/api.js#L80) içindeki `statusLabel()`
-fonksiyonundan gelir. İstasyon adı, iş emri sorgusuna JOIN ile eklenir
-([WorkOrderService.php:15-18](backend/src/Services/WorkOrderService.php#L15-L18)).
+"İstasyonun adı" gösterimi [api.js:136](frontend/shared/api.js#L136) içindeki `statusLabel()` fonksiyonundan gelir.
 
 **Veritabanı ayarları** ([Database.php:30-32](backend/src/Database.php#L30-L32)):
 - `foreign_keys = ON`: SQLite'ta bu ayar varsayılan olarak kapalıdır. Açılmazsa bağlı kayıtları silme (CASCADE) çalışmaz.
 - `journal_mode = WAL`: Bir cihaz yazarken diğerleri okumaya devam edebilir.
 - `busy_timeout = 5000`: Veritabanı meşgulse hemen hata vermek yerine 5 saniyeye kadar bekler.
 
-Zaman damgaları SQLite'ın `datetime('now')` fonksiyonuyla yazılır; bu yüzden **UTC**'dir.
+**Zaman:** Zaman damgaları `datetime('now')` ile yazılır, yani **UTC**'dir. Arayüz yerel saate
+çevirerek gösterir. Excel dosyasındaki tarihler ve "bugün" hesapları sunucunun saat dilimiyle
+(`Europe/Istanbul`, [config.php:13](backend/config.php#L13)) yapılır.
 
 ---
 
@@ -238,28 +306,25 @@ Zaman damgaları SQLite'ın `datetime('now')` fonksiyonuyla yazılır; bu yüzde
 
 ### İki katmanlı koruma
 
-**Katman 1: Servis katmanında ön kontrol** ([UniqueGuard.php:34-44](backend/src/Services/UniqueGuard.php#L34-L44))
+**Katman 1: Servis katmanında ön kontrol** ([UniqueGuard.php:34](backend/src/Services/UniqueGuard.php#L34))
 
 - Kaydetmeden önce aynı değer var mı diye bakılır.
-- Varsa kullanıcıya hangi alanın ve hangi değerin çakıştığı söylenir. Örnek: `409`, `"field":"barcode"`, mesaj `Barkod "869..." zaten kullanılıyor.`
-- Güncelleme yapılırken kaydın kendisi hariç tutulur (`id IS NOT :except`). Böylece bir kayıt kendi koduyla çakışmış sayılmaz.
-- Kullanıldığı yerler:
-  - PO: [PurchaseOrderService.php:73](backend/src/Services/PurchaseOrderService.php#L73), [:98](backend/src/Services/PurchaseOrderService.php#L98)
-  - İş emri: [WorkOrderService.php:54-55](backend/src/Services/WorkOrderService.php#L54-L55), [:84-85](backend/src/Services/WorkOrderService.php#L84-L85)
+- Varsa hangi alanın ve değerin çakıştığı söylenir. Örnek: `409`, `"field":"barcode"`, mesaj `Barkod "869..." zaten kullanılıyor.`
+- Güncellemede kaydın kendisi hariç tutulur; bir kayıt kendi koduyla çakışmış sayılmaz.
+- Temsilci ekranındaki anlık kontrol de bu katmanı `/check` ucuyla kullanır.
 
-**Katman 2: Veritabanı kısıtı** (`UNIQUE COLLATE NOCASE`, [001_init.sql:9,20,21](backend/database/migrations/001_init.sql#L9))
+**Katman 2: Veritabanı kısıtı** (`UNIQUE COLLATE NOCASE`, [001_init.sql](backend/database/migrations/001_init.sql))
 
 - İki cihaz aynı anda aynı kodu gönderirse ikisi de ön kontrolü geçebilir. Bu durumda veritabanı ikinci kaydı reddeder.
-- Veritabanının hatası, aynı `409` biçimine çevrilir ([UniqueGuard.php:63-75](backend/src/Services/UniqueGuard.php#L63-L75)).
-- Bu çeviri, her INSERT/UPDATE işleminin `catch` bloğunda yapılır ([PurchaseOrderService.php:85](backend/src/Services/PurchaseOrderService.php#L85), [WorkOrderService.php:70](backend/src/Services/WorkOrderService.php#L70)).
+- Veritabanının hatası aynı `409` biçimine çevrilir ([UniqueGuard.php:63](backend/src/Services/UniqueGuard.php#L63)).
 
 **Kanıt:**
 - Test bölüm 2 (10 kontrol): API üzerinden tekrar eden kayıtlar reddediliyor.
-- Test bölüm 7: API atlanıp doğrudan SQL ile tekrar eden kayıt eklenmeye çalışılınca veritabanı `UNIQUE constraint failed` hatasıyla reddediyor. Küçük harfle yazılan MA kodu da çakışıyor (NOCASE).
-- **Bozma denemesi:** Projenin bir kopyasında Katman 1 tamamen kapatıldı. Tekrar eden kayıt testlerinin hepsi yine `409` ve doğru `field` ile geçti; Katman 2 tek başına koruyor. Sadece `/check` testi kaldı, çünkü o uç doğrudan Katman 1'i kullanıyor. Ayrıntı: [11.2](#112-testin-gerçekten-hata-yakaladığının-kanıtı).
+- Test bölüm 7: API atlanıp doğrudan SQL ile tekrar eden kayıt eklenmeye çalışılınca veritabanı `UNIQUE constraint failed` ile reddediyor; küçük harfle yazılan MA kodu da çakışıyor.
+- **Bozma denemesi:** Projenin bir kopyasında Katman 1 tamamen kapatıldı; tekrar eden kayıt testleri yine `409` ve doğru `field` ile geçti. Katman 2 tek başına koruyor. Ayrıntı: [12.2](#122-testin-gerçekten-hata-yakaladığının-kanıtı).
 
-**Fark edilmesi gereken küçük ayrıntı:** Çakışmayı Katman 2 yakalarsa mesajda değer yer almaz
-(`Barkod zaten kullanılıyor.`). Bu yalnızca eşzamanlı yazma gibi nadir durumlarda olur.
+Çakışmayı Katman 2 yakalarsa mesajda değer yer almaz (`Barkod zaten kullanılıyor.`). Bu yalnızca
+eşzamanlı yazma gibi nadir durumlarda olur.
 
 ---
 
@@ -269,21 +334,22 @@ Zaman damgaları SQLite'ın `datetime('now')` fonksiyonuyla yazılır; bu yüzde
 |---|---|---|
 | PO no, MA kodu, barkod: zorunlu, 1–64 karakter, sadece harf, rakam ve `. _ - /` | [Validator.php:12-25](backend/src/Services/Validator.php#L12-L25) | 422 + `field` |
 | Baştaki ve sondaki boşluklar silinir; sadece boşluktan oluşan değer "boş" sayılır | [Validator.php:16](backend/src/Services/Validator.php#L16) | 422 |
-| Adet: pozitif tam sayı, varsayılan 1 | [Validator.php:42-49](backend/src/Services/Validator.php#L42-L49) | 422 |
-| Müşteri en fazla 200, açıklama 500, not 2000 karakter | [Validator.php:29-40](backend/src/Services/Validator.php#L29-L40) | 422 |
-| İstek gövdesi geçerli bir JSON nesnesi olmalı | [Request.php:54](backend/src/Http/Request.php#L54) | 400 |
-| Okutmada istasyon zorunlu, var olmalı ve aktif olmalı | [ProductionController.php:41](backend/src/Controllers/ProductionController.php#L41), [StationService.php:23-30](backend/src/Services/StationService.php#L23-L30) | 422 |
+| Adet: pozitif tam sayı, varsayılan 1 | [Validator.php:56](backend/src/Services/Validator.php#L56) | 422 |
+| Müşteri en fazla 200, açıklama 500, not 2000 karakter | [Validator.php:29](backend/src/Services/Validator.php#L29) | 422 |
+| Termin tarihi: boş veya gerçek bir takvim günü (`2020-02-30` reddedilir) | [Validator.php:43](backend/src/Services/Validator.php#L43) | 422 |
+| İstek gövdesi geçerli bir JSON nesnesi olmalı | [Request.php:72](backend/src/Http/Request.php#L72) | 400 |
+| Temsilci okutmasında istasyon zorunlu, var olmalı ve aktif olmalı | [ProductionController.php:47](backend/src/Controllers/ProductionController.php#L47), [StationService.php:23](backend/src/Services/StationService.php#L23) | 422 |
+| Excel şablonu: en fazla 5 MB ve örnek veriyle doldurulabilmeli | [PoExportService.php:117](backend/src/Services/PoExportService.php#L117) | 422 + `field: file` |
 
 **SQL injection koruması:**
 - Kullanıcıdan gelen her değer sorguya parametre olarak bağlanır (`prepare` + `execute`).
-- Sorgu metnine eklenen tablo ve sütun adları kullanıcıdan gelmez; sabit bir listeden gelir ([UniqueGuard.php:23](backend/src/Services/UniqueGuard.php#L23)).
-- `->query()` ile çalıştırılan iki sorgunun ikisi de sabit metindir ([Database.php:53](backend/src/Database.php#L53), [StationService.php:19](backend/src/Services/StationService.php#L19)).
+- Sorgu metnine eklenen tablo/sütun adları ve koşullar kullanıcıdan gelmez; koddaki sabitlerdir ([UniqueGuard.php:23](backend/src/Services/UniqueGuard.php#L23)).
 
-**XSS koruması:**
-- Arayüz, sunucudan gelen veriyi sayfaya HTML olarak basmadan önce `escapeHtml()` fonksiyonundan geçirir ([rep/app.js:150-154](frontend/rep/app.js#L150-L154)).
-- Biri açıklama alanına `<script>` yazsa bile bu kod çalışmaz, düz metin olarak görünür.
+**XSS koruması:** Arayüz sunucudan gelen veriyi HTML'e basmadan önce `escapeHtml()`
+fonksiyonundan geçirir ([api.js:141](frontend/shared/api.js#L141)). Açıklamaya `<script>` yazılsa
+bile çalışmaz, düz metin görünür.
 
-**Kanıt:** test bölüm 3 (6 kontrol).
+**Kanıt:** test bölüm 3 (6 kontrol) ve bölüm 4'teki termin tarihi kontrolleri.
 
 ---
 
@@ -291,18 +357,21 @@ Zaman damgaları SQLite'ın `datetime('now')` fonksiyonuyla yazılır; bu yüzde
 
 ### İstasyonlar
 
-[002_stations.sql:13-21](backend/database/migrations/002_stations.sql#L13-L21):
+Hat sırası: **Elektrik → Freze → CNC → Kalite Kontrol → Paketleme**
 
-| id | Kod | Ad | Son istasyon mu? |
-|---|---|---|---|
-| 1 | KESIM | Kesim | |
-| 2 | BUKUM | Büküm | |
-| 3 | KAYNAK | Kaynak | |
-| 4 | TASLAMA | Taşlama | |
-| 5 | BOYA | Boya | |
-| 6 | MONTAJ | Montaj | |
-| 7 | KALITE | Kalite Kontrol | |
-| 8 | PAKET | Paketleme | ✓ (`is_final = 1`) |
+| id | Kod | Ad | Kullanıcı | Son istasyon mu? |
+|---|---|---|---|---|
+| 9 | ELEKTRIK | Elektrik | `elektrik` | |
+| 10 | FREZE | Freze | `freze` | |
+| 11 | CNC | CNC | `cnc` | |
+| 7 | KALITE | Kalite Kontrol | `kalite` | |
+| 8 | PAKET | Paketleme | `paketleme` | ✓ (`is_final = 1`) |
+
+Sıra `id` ile değil `sort_order` ile belirlenir ([004_new_stations.sql](backend/database/migrations/004_new_stations.sql)).
+İlk kurulumdaki eski istasyonlar (Kesim, Büküm, Kaynak, Taşlama, Boya, Montaj), onların
+kullanıcıları, oturumları ve okutma kayıtları [006_remove_old_stations.sql](backend/database/migrations/006_remove_old_stations.sql)
+ile silindi. O istasyonlarda görünen iş emirleri kalan son okutmalarına göre konumlandı; hiç
+okutması kalmayanlar "Bekliyor" durumuna döndü.
 
 ### Durum geçişleri
 
@@ -319,101 +388,258 @@ Zaman damgaları SQLite'ın `datetime('now')` fonksiyonuyla yazılır; bu yüzde
 
 ### Okutma kuralları
 
-Hepsi [WorkOrderService.php:125-168](backend/src/Services/WorkOrderService.php#L125-L168) içinde:
+Hepsi [WorkOrderService.php](backend/src/Services/WorkOrderService.php) içindeki `scan()` fonksiyonunda:
 
 | Durum | Sonuç | Satır |
 |---|---|---|
 | Barkod sistemde yok | 404 `BARCODE_NOT_FOUND` | [:45](backend/src/Services/WorkOrderService.php#L45) |
-| İş emri iptal edilmiş | 409 `WORK_ORDER_CANCELLED` | [:134](backend/src/Services/WorkOrderService.php#L134) |
-| İş emri tamamlanmış | 409 `WORK_ORDER_DONE` | [:137](backend/src/Services/WorkOrderService.php#L137) |
-| İş emri zaten bu istasyonda (çift okutmayı önler) | 409 `ALREADY_AT_STATION` | [:140](backend/src/Services/WorkOrderService.php#L140) |
-| Başarılı, istasyon son istasyon değil | Durum `in_progress`, iş emri bu istasyona geçer | [:152](backend/src/Services/WorkOrderService.php#L152) |
-| Başarılı, istasyon son istasyon (`is_final`) | Durum `done` | [:152](backend/src/Services/WorkOrderService.php#L152) |
-| Her başarılı okutma | `scans` tablosuna istasyonuyla birlikte kaydedilir | [:158](backend/src/Services/WorkOrderService.php#L158) |
+| İş emri iptal edilmiş | 409 `WORK_ORDER_CANCELLED` | [:187](backend/src/Services/WorkOrderService.php#L187) |
+| İş emri tamamlanmış | 409 `WORK_ORDER_DONE` | [:190](backend/src/Services/WorkOrderService.php#L190) |
+| İş emri zaten bu istasyonda (çift okutmayı önler) | 409 `ALREADY_AT_STATION` | [:194](backend/src/Services/WorkOrderService.php#L194) |
+| Başarılı, son istasyon değil | Durum `in_progress`, iş emri bu istasyona geçer | [:198-207](backend/src/Services/WorkOrderService.php#L198-L207) |
+| Başarılı, son istasyon (`is_final`) | Durum `done` | [:198-207](backend/src/Services/WorkOrderService.php#L198-L207) |
+| Her başarılı okutma | `scans` tablosuna istasyon ve **okutan kullanıcı** ile kaydedilir | [:212](backend/src/Services/WorkOrderService.php#L212) |
 
 **Eşzamanlılık:**
-- Güncelleme koşulludur: `WHERE id = :id AND status IN ('open','in_progress')` ([:146-147](backend/src/Services/WorkOrderService.php#L146-L147)).
-- İki cihaz aynı iş emrini aynı anda Paketleme'de okutursa, ikincisinin güncellemesi hiçbir satırı etkilemez ve `409` alır ([:154-155](backend/src/Services/WorkOrderService.php#L154-L155)).
-- Okutma kaydı ve durum güncellemesi tek bir transaction içinde yapılır ([:129](backend/src/Services/WorkOrderService.php#L129)). Biri başarısız olursa ikisi birden geri alınır.
+- Güncelleme koşulludur: `WHERE id = :id AND status IN ('open','in_progress')` ([:201](backend/src/Services/WorkOrderService.php#L201)).
+- İki cihaz aynı iş emrini aynı anda Paketleme'de okutursa ikincisinin güncellemesi hiçbir satırı etkilemez ve `409` alır ([:208](backend/src/Services/WorkOrderService.php#L208)).
+- Okutma kaydı ve durum güncellemesi tek bir transaction içindedir ([:183](backend/src/Services/WorkOrderService.php#L183)); biri başarısız olursa ikisi birden geri alınır.
 
-**Elle durum değiştirme:** `PUT /work-orders/{id}` ile `status: "open"` verilirse iş emrinin
-istasyon bilgisi de temizlenir ([WorkOrderService.php:93](backend/src/Services/WorkOrderService.php#L93)).
+**Diğer:**
+- Okutulan barkodda büyük/küçük harf fark etmez: `b9` ile okutmak `B9`'u bulur.
+- İstasyon sırası zorunlu değildir; iş emri istasyon atlayabilir.
+- Okutmayı geri alma bilinçli olarak yok. Hatalı bir konumu yalnızca **yönetici** düzeltir: `POST /work-orders/{id}/move` ile iş emrini herhangi bir istasyona (tamamlanmış olsa bile), Bekliyor'a veya İptal'e taşır ([WorkOrderService.php](backend/src/Services/WorkOrderService.php) `move()`). Aynı konuma taşıma `409 NO_CHANGE` döner. Her taşıma geçmişe `move` olarak, yöneticinin adıyla kaydedilir; geçmiş tablosunda "admin · taşıma" görünür.
+- `PUT /work-orders/{id}` ile `status: "open"` verilirse iş emrinin istasyon bilgisi de temizlenir.
 
-Okutulan barkodda da büyük/küçük harf fark etmez: `b9` ile okutmak `B9`'u bulur.
-
-**Kanıt:** test bölüm 4 (15 kontrol). Okutmaların doğru istasyonlarla kaydedildiği doğrudan
+**Kanıt:** test bölüm 4. Okutmaların doğru istasyon ve kullanıcıyla kaydedildiği doğrudan
 veritabanından kontrol edilir.
 
 ---
 
-## 9. Migration (şema güncelleme) sistemi
+## 9. Raporlar, analiz ve pano
 
-[Database.php:45-78](backend/src/Database.php#L45-L78):
+### İstasyon geçmişi
 
-1. Her veritabanı bağlantısında `database/migrations/*.sql` dosyaları isim sırasıyla taranır.
-2. `schema_migrations` tablosunda kaydı olmayan dosyalar uygulanır.
-3. Her dosya kendi transaction'ında çalışır. Hata olursa o dosyanın değişiklikleri geri alınır ve uygulama hata verir ([Database.php:65-76](backend/src/Database.php#L65-L76)).
-4. Yarım kalmış bir şema oluşmaz.
+`GET /work-orders/{id}/scans` iş emrinin geçtiği her istasyonu, okutma zamanını ve okutan
+kullanıcıyı eskiden yeniye döner ([WorkOrderService.php:142](backend/src/Services/WorkOrderService.php#L142)).
+Arayüz bundan her istasyonda geçen süreyi hesaplar ([shared/history.js](frontend/shared/history.js)).
 
-**Mevcut migration'lar:**
+### PO Takip verisi
 
-| Dosya | İçerik |
+`GET /reports/overview` tüm PO'ları ve iş emirlerini tek istekte, her iş emrinin son okutma
+zamanıyla birlikte döner ([WorkOrderService.php:116](backend/src/Services/WorkOrderService.php#L116)).
+
+### Termin durumu
+
+Hesap arayüzde yapılır ([shared/due.js](frontend/shared/due.js)):
+
+| Durum | Koşul |
 |---|---|
-| `001_init.sql` | Temel tablolar. Tüm ifadeler `IF NOT EXISTS` ile yazıldı; bu yüzden migration sistemi gelmeden önce oluşturulmuş veritabanlarında da güvenle çalışır |
-| `002_stations.sql` | İstasyonlar tablosu ve 8 istasyon. `work_orders` tablosuna `current_station_id` eklendi, eski `scanned_qty` (okutulan adet sayacı) sütunu kaldırıldı. `scans` tablosunda serbest metin `station` alanı yerine `station_id` geldi |
+| Gecikti | Termin geçti ve PO bitmedi |
+| Yaklaşıyor | Termine 0–2 gün kaldı ve PO bitmedi |
+| Zamanında | Termine 2 günden fazla var |
+| Tamamlandı | Tüm iş emirleri tamamlandı veya iptal |
 
-**Kural:** Uygulanmış bir migration dosyasını **değiştirmeyin**. O değişiklik, dosyanın zaten
-uygulandığı veritabanlarına hiçbir zaman ulaşmaz. Yeni bir değişiklik için yeni numaralı bir dosya
-ekleyin (ör. `003_xxx.sql`).
+İş emri olmayan PO "bitmedi" sayılır.
 
-`002`, eski verisi olan bir veritabanının kopyası üzerinde denendi: mevcut PO'lar ve iş emirleri
-korundu.
+### İstasyon süre analizi
 
-**Kanıt:** test bölüm 7, iki migration'ın da kayıtlı olduğunu ve `migrate.php`'nin tekrar
-çalıştırılınca hata vermediğini doğrular.
+`GET /reports/stations?days=N` ([ReportService.php](backend/src/Services/ReportService.php)):
+
+- **Bir istasyonda geçen süre** = iş emrinin o istasyondaki okutması ile bir sonraki okutması arasındaki süre (SQL `LEAD` pencere fonksiyonu). Son istasyon için süre ölçülmez.
+- Her istasyon için: geçiş sayısı, ortalama ve en uzun süre, şu an orada bekleyen iş emri sayısı.
+- **Ortalama üretim süresi:** iş emrinin kaydından son istasyonda okutulmasına kadar.
+- **İlk istasyona bekleme:** kayıttan ilk okutmaya kadar.
+- Günlük okutma ve tamamlanma sayıları.
+
+Süreler **istasyonlar arası geçiş süresidir**; makinede çalışılan net süreyi değil, iş emrinin o
+istasyonda kaldığı toplam süreyi gösterir (bekleme dahil).
+
+### Atölye panosu
+
+`GET /board` istasyon başına bekleyen iş, bugünkü okutma ve tamamlanma sayıları, son 12 okutma,
+geciken ve termini yaklaşan PO'ları döner.
+
+**Canlı güncelleme** ([board/app.js](frontend/board/app.js)):
+- Pano her **3 saniyede** `GET /board/version` ucunu sorar. Bu uç, okutma, iş emri ve PO tablolarındaki herhangi bir değişiklikte ve gün dönümünde değişen 16 karakterlik bir parmak izi döner ([ReportService.php:168](backend/src/Services/ReportService.php#L168)).
+- Parmak izi değişirse tüm veri çekilip çizilir; değişen sayılar kısa süre vurgulanır.
+- Değişiklik görünmese de **60 saniyede** bir tam yenileme yapılır.
+- Sekme veya ekran gizliyken sorgu durur; görünür olunca hemen kontrol edilir.
+- Bağlantı koparsa son veri ekranda kalır, durum çubuğu kırmızı olur.
+
+**Kanıt:** test bölüm 4: geçmiş, rapor, analiz, pano verisi, parmak izinin veri değişmeyince
+aynı kalıp değişince değiştiği.
 
 ---
 
-## 10. Arayüz (frontend)
+## 10. Excel'e aktarma ve şablon
 
-Sayfalar ayrıdır ve ana menüden yönlendirilir.
+### Kullanım
 
-### Ana menü — `/`
+- **PO Oluşturma** sayfasında PO başlığındaki ve **PO Takip** sayfasında her PO kartındaki **Excel'e aktar** butonu PO'yu `.xlsx` olarak indirir (`GET /pos/{id}/export`).
+- Dosya adı PO numarasından türetilir.
 
-- İki kutucuk vardır: **PO Oluşturma** ([index.html:23](frontend/index.html#L23)) ve **İş Emri Okut** ([index.html:37](frontend/index.html#L37)).
-- Klavye kısayolları: `1` ve `2` ([menu.js:9-13](frontend/menu.js#L9-L13)).
-- Sunucu durumu `/health` ucuyla kontrol edilir ([menu.js:19](frontend/menu.js#L19)). Bu uç anahtar istemediği için ana menü hiçbir anahtar taşımaz.
-- Alt sayfalarda sol üstte **← Ana menü** butonu bulunur ([rep/index.html:13](frontend/rep/index.html#L13), [production/index.html:13](frontend/production/index.html#L13)).
+### Varsayılan şablon
 
-### PO Oluşturma — `/rep/` (anahtar: `rep`)
+[backend/templates/po.xlsx](backend/templates/po.xlsx), [build-po-template.php](backend/bin/build-po-template.php) ile üretilir. Üç sayfası var:
 
-- **PO oluşturma ve arama.** Arama, PO numarası ve müşteri adı içinde yapılır.
-- **PO'ya iş emri ekleme:** MA kodu, barkod, adet, açıklama.
-- **Anlık benzersizlik kontrolü:** Bir alandan çıkıldığı anda `/check` sorulur ve çakışma varsa alanın altında yazar ([rep/app.js:47-60](frontend/rep/app.js#L47-L60)).
-- **Kaydetme hataları** ilgili alanın altına yazılır ([rep/app.js:37-44](frontend/rep/app.js#L37-L44)).
-- **İş emri tablosu:** MA kodu, barkod, açıklama, adet ve durum sütunları. Durum sütununda üretimdeyse istasyonun adı görünür ([rep/app.js:154](frontend/rep/app.js#L154)).
-- **PO listesinde `tamamlanan/toplam` sayacı** (ör. `1/2`).
-- **İş emri ve PO silme.** Silmeden önce onay sorulur.
+| Sayfa | İçerik |
+|---|---|
+| **PO** | PO bilgileri (müşteri, termin, termin durumu, not), durum sayıları, tüm iş emirleri ve altında toplam adet |
+| **Geçmiş** | Her iş emrinin geçtiği istasyonlar, tarihleri, okutan kullanıcılar ve her konumda geçen süre |
+| **Dağılım** | İş emirlerinin konumlara göre sayısı ve yüzdesi |
 
-### İş Emri Okut — `/production/` (anahtar: `production`)
+### Şablonu değiştirmek
 
-- **İstasyon seçimi** zorunludur. Seçilmeden okutma yapılmaz ([production/app.js:57-62](frontend/production/app.js#L57-L62)).
-- Seçilen istasyon o cihazın tarayıcısında (`localStorage`) hatırlanır ([production/app.js:11,21,27](frontend/production/app.js#L11)).
-- **Barkod şimdilik elle yazılır;** Enter'a basılır veya **Okut** butonuna tıklanır ([production/index.html:31](frontend/production/index.html#L31)). İleride klavye gibi çalışan bir okuyucu da (barkodu yazıp Enter basan cihazlar) değişiklik gerekmeden çalışır.
-- Barkod kutusu sürekli odakta tutulur. İstasyon listesi açıkken bu yapılmaz, yoksa liste kapanırdı ([production/app.js:43-47](frontend/production/app.js#L43-L47)).
-- **Sonuç gösterimi:** Yeşil = tamamlandı, sarı = istasyona geçti, kırmızı = hata. Her sonuca farklı tonda bir bip sesi eşlik eder ([production/app.js:113](frontend/production/app.js#L113)).
-- **"Son okutmalar"** listesi yalnızca o sayfada tutulur, sunucuya kaydedilmez. Sayfa yenilenince sıfırlanır ([production/app.js:97](frontend/production/app.js#L97)). Kalıcı kayıt sunucudaki `scans` tablosundadır.
+1. Ana menüden **Excel Şablonu** sayfasını açın (tuş `6`).
+2. **Şablonu indir** ile mevcut şablonu alın, Excel'de istediğiniz gibi düzenleyin (logo, renkler, sütun sırası, ek başlıklar). Biçimlendirme olduğu gibi korunur.
+3. **Yeni şablon yükle** ile geri yükleyin. Yüklenen dosya önce örnek veriyle doldurulup denenir; bozuk veya Excel olmayan dosya reddedilir ([PoExportService.php:117](backend/src/Services/PoExportService.php#L117)).
+4. **Varsayılana dön** yüklenen şablonu siler.
+
+Yüklenen şablon `backend/storage/templates/po.xlsx` dosyasına yazılır ve varsayılanın yerine geçer.
+Bu klasör git'e girmez.
+
+### Şablon kuralları
+
+[XlsxTemplate.php](backend/src/Excel/XlsxTemplate.php):
+
+| Kural | Örnek |
+|---|---|
+| Hücreye yazılan `{anahtar}` gerçek değerle değişir; yazının içinde de kullanılabilir | `{po_number}`, `PO: {po_number}` |
+| `{wo.…}`, `{scan.…}` veya `{loc.…}` içeren **satır** listedeki her kayıt için tekrarlanır; altındaki satırlar aşağı kayar. Bir satırda tek liste kullanılmalı | `{wo.ma_code}` |
+| Hücrede tek başına duran sayısal yer tutucu Excel'e **sayı** olarak yazılır | `{wo.quantity}` |
+| Tekrar satırının altındaki formüller kaydırılır; tekrar satırını kapsayan aralık tüm tekrarları kapsayacak şekilde genişler | `=TOPLA(E12)` → `=TOPLA(E12:E14)` |
+| Birleştirilmiş hücreler, koşullu biçimlendirme, veri doğrulama ve bağlantılar da kaydırılır | — |
+| Excel dosyayı açarken formülleri yeniden hesaplar | — |
+
+**Kaydırılmayanlar:** başka sayfaya işaret eden formül referansları, Excel Tablosu (Ctrl+T) ve
+yazdırma alanı. Bunlar tekrar satırının altındaysa yerinde kalır.
+
+### Yer tutucular
+
+Tam liste Excel Şablonu sayfasında (tıklayınca kopyalanır) ve
+[PoExportService.php:23](backend/src/Services/PoExportService.php#L23) içinde.
+
+| Grup | Yer tutucular |
+|---|---|
+| Genel | `po_number`, `customer`, `note`, `due_date`, `due_status`, `created_at`, `total`, `open`, `in_progress`, `done`, `cancelled`, `completion` (metin, `%33`), `completion_ratio` (sayı, 0–1), `export_date`, `exported_by` |
+| İş emri satırı | `wo.no`, `wo.ma_code`, `wo.barcode`, `wo.description`, `wo.quantity`, `wo.status`, `wo.station`, `wo.location`, `wo.last_scan`, `wo.created_at`, `wo.route` (geçtiği istasyonlar), `wo.lead_time` (kayıttan tamamlanmaya süre) |
+| Geçmiş satırı | `scan.no`, `scan.ma_code`, `scan.barcode`, `scan.station` (ilk satır: Kayıt), `scan.date`, `scan.user`, `scan.duration` |
+| Dağılım satırı | `loc.name`, `loc.count`, `loc.percent` (metin), `loc.ratio` (sayı, 0–1) |
+
+### Teknik ayrıntı
+
+- `.xlsx` bir zip dosyasıdır. PHP'nin `zip` eklentisi gerektirmemek için zip okuma/yazma saf PHP ve `zlib` ile yazıldı ([Zip.php](backend/src/Excel/Zip.php)).
+- LibreOffice kaydederken `TOPLA(E12:E12)` formülünü `TOPLA(E12)` olarak kısaltır. Bu yüzden toplama fonksiyonlarının (SUM, AVERAGE, COUNT, MIN, MAX …) tek hücre argümanı da tekrar satırını kapsıyorsa aralığa genişletilir ([XlsxTemplate.php:330](backend/src/Excel/XlsxTemplate.php#L330)).
+- Paylaşılan formüller (Excel'in tekrarlayan formülleri sıkıştırması) önce açılır, sonra kaydırılır.
+- Hesap zinciri (`calcChain.xml`) silinir ve açılışta tam hesaplama istenir; böylece eski önbellek değerleri görünmez.
+
+**Kanıt:**
+- Test bölüm 4: dışa aktarılan dosyada iş emirleri dolu ve hiç yer tutucu kalmamış; üretim kullanıcısı Excel alamıyor; geçersiz şablon reddediliyor; geçerli şablon yükleniyor; varsayılana dönülüyor.
+- Elle: üretilen dosyalar LibreOffice ile açıldı, iş emri satırları ve toplam formülü doğru hesaplandı. LibreOffice ile açılıp tekrar kaydedilen şablon da doğru çalıştı.
+- **Microsoft Excel ile denenmedi.**
+
+---
+
+## 11. Arayüz (frontend)
+
+Sayfalar ayrıdır ve temsilci için ana menüden yönlendirilir.
+
+### Tasarım yaklaşımı
+
+Arayüz üretim yazılımlarında (MES / SCADA) kullanılan **ISA-101 "yüksek performanslı HMI"**
+ilkelerine göre tasarlandı ([base.css](frontend/shared/base.css)):
+
+- **Renk sadece durum bildirir.** Yüzeyler nötr gridir. Yeşil = tamam, amber = hatta, kırmızı = hata/gecikme, mavi = seçim ve odak.
+- **Süs yok.** Gölge, gradyan, ikonlu kutucuk kullanılmaz.
+- **Yoğun ve tablo odaklı.** Sayılar sabit genişlikte (`tabular-nums`); sütunlar kaymaz.
+- **Uygulama çerçevesi:** Üstte başlık çubuğu (sayfa, kullanıcı, rol, istasyon, Çıkış), altta durum çubuğu (sunucu bağlantısı, API adresi, saat; [statusbar.js](frontend/shared/statusbar.js)).
+- **Kare durum göstergeleri** (HMI'larda yaygın).
+- **Tema:** İşletim sisteminin açık/koyu ayarını izler. İş Emri Okut ve Atölye Panosu her zaman koyudur.
+
+### Giriş — `/login.html`
+
+Kullanıcı adı ve şifre. Zaten giriş yapılmışsa doğrudan rolün sayfasına gider.
+
+### Ana menü — `/` (rep)
+
+- Modüller bir tablo hâlinde listelenir; satırın tamamı tıklanabilir.
+- Klavye kısayolları `1`–`6` ([menu.js](frontend/menu.js)):
+
+| Tuş | Modül | Adres |
+|---|---|---|
+| 1 | PO Oluşturma | `/rep/` |
+| 2 | İş Emri Okut | `/production/` |
+| 3 | PO Takip | `/report/` |
+| 4 | Üretim Analizi | `/analysis/` |
+| 5 | Atölye Panosu | `/board/` |
+| 6 | Excel Şablonu | `/template/` |
+
+### PO Oluşturma — `/rep/` (rep)
+
+- **Sol panel (PO defteri):**
+  - Arama (PO numarası ve müşteri), filtreler: **Tümü / Açık / Termin riski / Biten**, her filtrede kayıt sayısı.
+  - Her PO satırında: PO no, tamamlanma yüzdesi, müşteri, termin durumu (gecikti / kaldı), tamamlanan ve hattaki iş emirlerini gösteren yığılmış çubuk, `tamamlanan/toplam`.
+  - **Yeni PO** formu açılır panel olarak gelir (kısayol `N`): PO no, müşteri, termin, not.
+- **PO detayı:**
+  - Başlık: PO numarası, müşteri, kayıt zamanı, **düzenlenebilir termin tarihi** (değiştirilince hemen kaydedilir), **Excel'e aktar**, PO silme.
+  - Durum sayıları: Toplam / Bekliyor / Hatta / Tamamlandı.
+  - **Konum dağılımı:** iş emirlerinin kaçı nerede, iş emri sayısına ve adete göre yüzde.
+  - **İş emri ekleme:** MA kodu, barkod, adet, açıklama. Alandan çıkıldığı anda benzersizlik sorulur; çakışma alanın altında yazar.
+  - **İş emri tablosu:** #, MA kodu, barkod, açıklama, adet, durum (üretimdeyse istasyon adı), hat konumu (her istasyon bir hücre, dolu hücre şu anki istasyon).
+  - **İş emri satırına tıklayınca** istasyon geçmişi açılır: istasyon, tarih-saat, okutan kullanıcı, o istasyonda geçen süre.
+  - Silme işlemlerinden önce onay sorulur.
+
+### İş Emri Okut — `/production/` (production, rep)
+
+- **İstasyon:** Üretim kullanıcısında hesabındaki istasyon seçili gelir ve değiştirilemez; Ana menü bağlantısı gizlenir. Temsilci istasyonu buton grubundan seçer; seçim o tarayıcıda hatırlanır. İstasyon seçmeden okutma yapılmaz.
+- **Barkod şimdilik elle yazılır;** Enter'a basılır veya **Okut** butonuna tıklanır. Barkodu yazıp Enter basan, klavye gibi çalışan bir okuyucu da değişiklik gerekmeden çalışır. Barkod kutusu sürekli odakta tutulur.
+- **Sonuç paneli:** amber = istasyona alındı, yeşil = tamamlandı, kırmızı = reddedildi. Büyük punto MA kodu, altında PO, barkod, adet ve açıklama. Her sonuca farklı tonda bir bip sesi eşlik eder.
+- **Son okutmalar** tablosu yalnızca o oturumda tutulur; sayfa yenilenince sıfırlanır. Kalıcı kayıt sunucudaki `scans` tablosundadır.
+
+### PO Takip — `/report/` (rep)
+
+- Genel durum: tüm iş emirlerinin konumlara göre dağılımı (pasta grafik) ve özet sayılar.
+- Her PO için bir kart: konum dağılımı pastası, termin durumu, iş emirleri tablosu, **Excel'e aktar**.
+- Arama (PO no, müşteri, MA kodu, barkod), "Tamamlanan PO'ları gizle" ve "Sadece geciken / termini yaklaşan" filtreleri.
+- İş emri satırına tıklayınca istasyon geçmişi açılır.
+- Grafikler kütüphanesiz, SVG ile çizilir.
+
+### Üretim Analizi — `/analysis/` (rep)
+
+- Dönem: **7 / 30 / 90 gün** (seçim hatırlanır).
+- Özet: bugün ve dönemde tamamlanan, ortalama üretim süresi, ortalama ilk istasyona bekleme, şu an hatta, bekleyen.
+- İstasyon tablosu: geçiş sayısı, ortalama ve en uzun süre, bekleyen iş emri, çubuk. Ortalaması en uzun istasyon **DARBOĞAZ** olarak işaretlenir.
+- Günlük okutma ve tamamlanma grafiği.
+
+### Atölye Panosu — `/board/` (board, rep)
+
+- Uzaktan okunacak büyük punto: istasyon başına bekleyen iş, bugün okutulan ve tamamlanan, bekleyen iş emri, son okutmalar, geciken ve termini yaklaşan PO'lar.
+- Canlı güncellenir (bkz. [9](#atölye-panosu)); tam ekran düğmesi var.
+- `pano` kullanıcısında Ana menü bağlantısı gizlenir; başka sayfa açmaya çalışırsa panoya geri döner.
+
+### İş Emri Taşıma — `/admin/` (admin)
+
+- Tüm iş emirleri tek tabloda: PO, MA kodu, barkod, açıklama, adet, konum, son hareket. Arama ve durum filtresi (Tümü / Bekliyor / Hatta / Tamamlandı / İptal).
+- Satıra tıklayınca taşıma paneli açılır: **Bekliyor**, her istasyon ve **İptal** butonları; şu anki konum işaretli. Butona basınca iş emri hemen taşınır.
+- Panelin altında iş emrinin geçmişi görünür.
+- Yöneticinin başka sayfası yoktur; başka bir sayfa açmaya çalışırsa bu sayfaya döner.
+
+### Excel Şablonu — `/template/` (rep)
+
+Şablonun durumu (varsayılan / özel, yüklenme zamanı, boyut), indir / yükle / varsayılana dön,
+kurallar ve tıklayınca kopyalanan yer tutucu listesi (bkz. [10](#10-excele-aktarma-ve-şablon)).
 
 ### Ortak
 
-- **Tüm sayfalar aynı API istemcisini kullanır** ([shared/api.js](frontend/shared/api.js)). Sunucunun hata kodu, mesajı ve `field` bilgisi `ApiError` nesnesine taşınır ([api.js:4-12](frontend/shared/api.js#L4-L12)).
-- **Tema:** Açık ve koyu tema işletim sisteminin ayarını izler ([base.css](frontend/shared/base.css)).
+- Tüm sayfalar aynı API istemcisini kullanır ([shared/api.js](frontend/shared/api.js)). Sunucunun hata kodu, mesajı ve `field` bilgisi `ApiError` nesnesine taşınır.
+- **API adresi** sayfanın açıldığı adresten türetilir ([shared/api-base.js](frontend/shared/api-base.js)).
 
 ---
 
-## 11. Test etme
+## 12. Test etme
 
-### 11.1 Otomatik uçtan uca test
+### 12.1 Otomatik uçtan uca test
 
 ```bash
 ./scripts/test.sh
@@ -421,42 +647,44 @@ Sayfalar ayrıdır ve ana menüden yönlendirilir.
 
 **Ne yapar** ([scripts/test.sh](scripts/test.sh)):
 
-1. `mktemp` ile **geçici** bir klasörde yeni bir veritabanı oluşturur ve örnek veriyi ekler.
+1. `mktemp` ile **geçici** bir klasörde yeni bir veritabanı oluşturur, tüm migration'ları uygular ve örnek veriyi ekler. Özel şablon yolu da geçici klasöre yönlendirilir.
 2. API'yi `127.0.0.1:8799` adresinde geçici bir sunucuyla başlatır. Port `TEST_PORT=...` ile değiştirilebilir.
-3. Gerçek HTTP istekleri gönderir. Her yanıtın **HTTP kodunu** ve **içeriğini** beklenenle karşılaştırır.
-4. Bazı kontrolleri API'yi atlayıp doğrudan SQL ile yapar. Bunlar veritabanı kısıtlarını, okutma kayıtlarını ve bağlı kayıtların silinmesini doğrular.
-5. Sunucu logunda PHP hatası (`fatal`, `uncaught`) var mı diye bakar.
-6. Bitince sunucuyu durdurur ve geçici klasörü siler.
+3. `mami`, `freze`, `cnc` ve `pano` hesaplarıyla gerçekten giriş yapar ve token alır.
+4. Gerçek HTTP istekleri gönderir; her yanıtın **HTTP kodunu** ve **içeriğini** beklenenle karşılaştırır.
+5. Bazı kontrolleri API'yi atlayıp doğrudan SQL ile yapar (veritabanı kısıtları, okutma kayıtları, bağlı kayıtların silinmesi).
+6. Sunucu logunda PHP hatası (`fatal`, `uncaught`) var mı diye bakar.
+7. Bitince sunucuyu durdurur ve geçici klasörü siler.
 
-**Gerçek veritabanına (`backend/storage/app.sqlite`) dokunmaz.** `dev.sh` açıkken de
-çalıştırılabilir. Hepsi geçerse çıkış kodu `0`, en az biri kalırsa `1` olur; bu yüzden ileride
-CI'da da kullanılabilir.
+**Gerçek veritabanına (`backend/storage/app.sqlite`) ve yüklenmiş şablona dokunmaz.** `dev.sh`
+açıkken de çalıştırılabilir. Hepsi geçerse çıkış kodu `0`, en az biri kalırsa `1`.
 
 **Kapsam:**
 
-| Bölüm | Kontrol sayısı | Doğruladığı |
+| Bölüm | Kontrol | Doğruladığı |
 |---|---|---|
-| 1. Kimlik ve rol yetkileri | 8 | Anahtarsız/yanlış anahtar 401; yanlış rol 403; `/health` açık |
+| 1. Giriş ve rol yetkileri | 10 | Yanlış şifre, girişsiz ve geçersiz token 401; yanlış rol 403; `/me`; çıkıştan sonra token geçersiz |
 | 2. Benzersizlik | 10 | PO/MA/barkod tekrarı (büyük/küçük harf ve farklı PO dahil); güncellemede çakışma; `/check` |
 | 3. Veri doğrulama | 6 | Boş, geçersiz karakterli, 65 karakterlik değerler; adet 0; bozuk JSON; olmayan PO |
-| 4. Okutma ve istasyon akışı | 15 | İstasyonsuz/geçersiz istasyon; bilinmeyen barkod; Kesim → Kaynak → Paketleme; çift okutma; tamamlanmış/iptal; `open`'a alınca istasyon temizlenir; okutma kayıtları |
-| 5. Silme | 3 | PO silinince iş emirleri ve okutma kayıtları da silinir |
+| 4. Okutma, raporlar, pano, Excel, taşıma | 47 | Okutma akışı ve tüm hata durumları; geçmiş; PO Takip; termin; analiz; pano verisi ve parmak izi; pano ve üretim kullanıcısının yetki sınırları; Excel dışa aktarma ve şablon yükleme/sıfırlama; üretim kullanıcısının istasyonunun sabit olması; okutan kullanıcının kaydı; yönetici taşıması (tamamlanmışı geri alma, Bekliyor'a alma, aynı konum, geçersiz hedef, geçmiş kaydı) ve yöneticinin/diğer rollerin yetki sınırları |
+| 5. Silme | 3 | PO silinince iş emirleri ve okutmaları da silinir |
 | 6. Yönlendirici | 2 | Olmayan uç 404, yanlış metod 405 |
-| 7. Veritabanı katmanı | 6 | Doğrudan SQL ile UNIQUE/NOCASE/CHECK kısıtları; migration kayıtları; migrate'in tekrar çalıştırılabilmesi |
+| 7. Veritabanı katmanı | 6 | Doğrudan SQL ile UNIQUE/NOCASE/CHECK kısıtları; 7 migration'ın kaydı; migrate'in tekrar çalıştırılabilmesi |
 
 <details>
-<summary>Son çalıştırmanın tam çıktısı (2026-10-03): <b>50 geçti, 0 kaldı</b></summary>
+<summary>Son çalıştırmanın tam çıktısı (2026-10-05): <b>84 geçti, 0 kaldı</b></summary>
 
 ```
-1) Kimlik ve rol yetkileri
-  ✓ health anahtarsız açık
-  ✓ anahtarsız istek reddedilir
-  ✓ yanlış anahtar reddedilir
-  ✓ üretim anahtarı PO listeleyemez
-  ✓ üretim anahtarı PO oluşturamaz
-  ✓ temsilci anahtarı okutma yapamaz
-  ✓ üretim anahtarı istasyonları görür
-  ✓ /me rolü döndürür
+1) Giriş ve rol yetkileri
+  ✓ health girişsiz açık
+  ✓ yanlış şifre reddedilir
+  ✓ girişsiz istek reddedilir
+  ✓ geçersiz token reddedilir
+  ✓ üretim kullanıcısı PO listeleyemez
+  ✓ üretim kullanıcısı PO oluşturamaz
+  ✓ üretim kullanıcısı istasyonları görür
+  ✓ /me kullanıcı ve istasyonu döndürür
+  ✓ çıkış yapılır
+  ✓ çıkıştan sonra token geçersiz
 2) Benzersizlik (PO no, MA kodu, barkod)
   ✓ aynı PO no (küçük harfle) reddedilir
   ✓ yeni PO oluşturulur (id=2)
@@ -479,9 +707,9 @@ CI'da da kullanılabilir.
   ✓ istasyonsuz okutma reddedilir
   ✓ olmayan istasyon reddedilir
   ✓ bilinmeyen barkod
-  ✓ Kesim'de okut → üretimde, Kesim
+  ✓ Elektrik'te okut → üretimde
   ✓ aynı istasyonda tekrar okutma yasak
-  ✓ küçük harf barkodla Kaynak'ta okut
+  ✓ küçük harf barkodla Freze'de okut
   ✓ PO detayında istasyon görünür
   ✓ Paketleme (son) → tamamlandı
   ✓ tamamlanmış iş emri okutulamaz
@@ -491,6 +719,38 @@ CI'da da kullanılabilir.
   ✓ open'a alınınca istasyon temizlenir
   ✓ barkod sorgulama (lookup)
   ✓ her okutma istasyonuyla kaydedildi
+  ✓ iş emri istasyon geçmişi (tarih + okutan)
+  ✓ PO takip raporu (PO + iş emirleri)
+  ✓ PO termin tarihiyle kaydedilir
+  ✓ geçersiz termin tarihi reddedilir
+  ✓ istasyon süre analizi
+  ✓ pano verisi (geciken PO dahil)
+  ✓ pano sürümü değişmezse aynı kalır
+  ✓ veri değişince pano sürümü değişir
+  ✓ pano kullanıcısı PO göremez
+  ✓ pano kullanıcısı okutma yapamaz
+  ✓ üretim kullanıcısı panoyu göremez
+  ✓ PO Excel'e aktarılır (iş emirleri dolu, yer tutucu kalmaz)
+  ✓ üretim kullanıcısı Excel alamaz
+  ✓ şablon bilgisi ve yer tutucular
+  ✓ geçersiz şablon reddedilir
+  ✓ geçerli şablon yüklenir
+  ✓ varsayılan şablona dönülür
+  ✓ üretim kullanıcısı raporu göremez
+  ✓ üretim kullanıcısı geçmişi göremez
+  ✓ üretim kullanıcısının istasyonu sabit (gövde yok sayılır)
+  ✓ okutmayı yapan kullanıcı kaydedildi
+  ✓ yönetici iş emrini Paketleme'ye taşır → tamamlandı
+  ✓ yönetici tamamlanmışı geri istasyona alır
+  ✓ aynı konuma taşıma reddedilir
+  ✓ yönetici Bekliyor'a alır
+  ✓ geçersiz hedef reddedilir
+  ✓ taşıma geçmişte yöneticiyle görünür
+  ✓ temsilci taşıma yapamaz
+  ✓ üretim kullanıcısı taşıma yapamaz
+  ✓ yönetici PO oluşturamaz
+  ✓ yönetici okutma yapamaz
+  ✓ yönetici Excel şablonunu değiştiremez
 5) Silme ve bağlı kayıtlar
   ✓ PO silinir
   ✓ silinen PO'nun iş emri de silindi
@@ -506,91 +766,127 @@ CI'da da kullanılabilir.
   ✓ migration'lar kayıtlı
   ✓ migrate tekrar çalıştırılabilir (idempotent)
 
-Sonuç: 50 geçti, 0 kaldı
+Sonuç: 84 geçti, 0 kaldı
 ```
 
 </details>
 
-### 11.2 Testin gerçekten hata yakaladığının kanıtı
+### 12.2 Testin gerçekten hata yakaladığının kanıtı
 
 Her zaman "geçti" diyen bir test hiçbir şey kanıtlamaz. Bu yüzden projenin **bir kopyasında**
 kod kasıtlı olarak bozuldu ve test tekrar çalıştırıldı. Asıl kodda bu bozma yapılmadı.
 
+> Bu deneme, giriş sistemi gelmeden önceki sürümde (50 kontrol) yapıldı. Bozulan iki kural
+> (rol yetkisi ve benzersizlik ön kontrolü) mevcut kodda da aynı yerde duruyor.
+
 **Yapılan iki bozma:**
-1. `routes.php` içinde temsilci rolüne okutma yetkisi verildi.
+1. `routes.php` içinde okutma ucuna yetkisiz bir rol eklendi.
 2. `UniqueGuard::assertAvailable()` boşaltıldı; Katman 1 ön kontrolü devre dışı kaldı.
 
-**Sonuç:** `46 geçti, 4 kaldı`
-
-| Kalan test | Neden kaldı |
-|---|---|
-| temsilci anahtarı okutma yapamaz | 403 beklenirken 201 geldi: yetki açığı yakalandı |
-| /check: dolu barkod | `available:false` beklenirken `true` geldi |
-| her okutma istasyonuyla kaydedildi | Temsilcinin yaptığı fazladan okutma kayıtlarda göründü |
-| silinen iş emrinin okutmaları da silindi | Aynı fazladan okutma yüzünden |
+**Sonuç:** `46 geçti, 4 kaldı`. Yetki açığı (403 yerine 201), `/check` sonucu ve yetkisiz
+okutmanın kayıtlarda görünmesi yakalandı.
 
 **Önemli gözlem:** Katman 1 kapalıyken bile tekrar eden kayıt testlerinin hepsi `409` ve doğru
-`field` ile **geçti**. Bu, veritabanı kısıtı ve hata çevirisinin (Katman 2) tek başına koruma
-sağladığını kanıtlıyor.
+`field` ile **geçti**. Veritabanı kısıtı ve hata çevirisi (Katman 2) tek başına koruma sağlıyor.
 
-### 11.3 Elle API testi (curl)
+### 12.3 Elle API testi (curl)
 
 ```bash
 # Sağlık
 curl http://localhost:8000/api/v1/health
 
-# PO listesi (temsilci)
-curl -H 'X-API-Key: dev-rep-key' http://localhost:8000/api/v1/pos
+# Giriş: yanıttaki "token" değerini alın
+curl -X POST -H 'Content-Type: application/json' \
+  -d '{"username":"mami","password":"123"}' http://localhost:8000/api/v1/auth/login
 
-# Yeni PO
-curl -X POST -H 'X-API-Key: dev-rep-key' -H 'Content-Type: application/json' \
-  -d '{"po_number":"PO-TEST-1","customer":"Deneme"}' http://localhost:8000/api/v1/pos
+TOKEN=...   # yukarıdaki yanıttan
+
+# PO listesi
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/v1/pos
+
+# Yeni PO (termin tarihiyle)
+curl -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"po_number":"PO-TEST-1","customer":"Deneme","due_date":"2026-12-31"}' http://localhost:8000/api/v1/pos
 
 # Tekrar aynı PO → 409 DUPLICATE
-curl -X POST -H 'X-API-Key: dev-rep-key' -H 'Content-Type: application/json' \
+curl -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"po_number":"po-test-1"}' http://localhost:8000/api/v1/pos
 
-# İstasyonlar (üretim)
-curl -H 'X-API-Key: dev-production-key' http://localhost:8000/api/v1/stations
+# Freze istasyonunda (id=10) okut (temsilci istasyonu kendisi seçer)
+curl -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"barcode":"8690000000011","station_id":10}' http://localhost:8000/api/v1/production/scan
 
-# Kaynak istasyonunda (id=3) okut
-curl -X POST -H 'X-API-Key: dev-production-key' -H 'Content-Type: application/json' \
-  -d '{"barcode":"8690000000011","station_id":3}' http://localhost:8000/api/v1/production/scan
+# PO'yu Excel'e aktar
+curl -H "Authorization: Bearer $TOKEN" -o po.xlsx http://localhost:8000/api/v1/pos/1/export
 ```
 
 > Bu komutlar `dev.sh`'ın kullandığı **gerçek** veritabanına yazar. Deneme verisi bırakmak
 > istemiyorsanız `./scripts/test.sh` kullanın.
 
-### 11.4 Arayüzden elle test senaryosu
+### 12.4 Arayüzden elle test senaryosu
 
 `./scripts/dev.sh` açıkken:
 
 | # | Adım | Beklenen |
 |---|---|---|
-| 1 | http://localhost:5173/ adresini aç | Ana menü açılır, sağ üstte "Sunucu bağlı" yazar |
-| 2 | `1` tuşuna bas | PO Oluşturma sayfası açılır |
-| 3 | PO numarası alanına `po-2026-001` yaz ve alandan çık | Alanın altında "zaten kullanılıyor" yazar |
-| 4 | `PO-DENEME` adıyla yeni bir PO oluştur | PO listede görünür ve açılır |
-| 5 | MA kodu `MA-0001`, barkod `X1` ile iş emri eklemeyi dene | MA kodu alanının altında hata yazar |
-| 6 | MA kodu `MA-D1`, barkod `D1` ile iş emri ekle | Tabloda Durum sütununda "Bekliyor" görünür |
-| 7 | ← Ana menü'ye dön, ardından `2` tuşuna bas | İş Emri Okut sayfası açılır |
-| 8 | İstasyon seçmeden `D1` yazıp Okut'a tıkla | Kırmızı "İSTASYON SEÇİN" uyarısı çıkar |
-| 9 | "Kaynak"ı seç, `D1` yaz, Okut'a tıkla | Sarı ekranda `MA-D1 → Kaynak` yazar |
-| 10 | Aynı barkodu tekrar okut | Kırmızı ekranda "zaten Kaynak istasyonunda" yazar |
-| 11 | PO Oluşturma sayfasına dön ve PO'yu aç | Durum sütununda "Kaynak" yazar |
-| 12 | "Paketleme"yi seç ve `D1`'i okut | Yeşil ekranda "TAMAMLANDI" yazar; PO listesinde sayaç `1/1` olur |
-| 13 | Sayfayı yenile | Seçili istasyon hatırlanmış olur; "Son okutmalar" listesi boştur (bu beklenen davranış) |
+| 1 | http://localhost:5173/ adresini aç | Giriş ekranı açılır |
+| 2 | `mami` / `123` ile giriş yap | Ana menü açılır, sağ altta "Sunucu bağlı" yazar |
+| 3 | `1` tuşuna bas, `N` tuşuna bas | PO Oluşturma açılır, yeni PO formu açılır |
+| 4 | PO numarasına `po-2026-001` yaz ve alandan çık | Alanın altında "zaten kullanılıyor" yazar |
+| 5 | `PO-DENEME` numaralı, termini dün olan bir PO oluştur | PO listede "1 gün gecikti" ile görünür |
+| 6 | MA kodu `MA-D1`, barkod `D1` ile iş emri ekle | Tabloda durum "Bekliyor" |
+| 7 | Başka bir tarayıcıda (veya gizli pencerede) `freze` / `123` ile giriş yap | Doğrudan İş Emri Okut açılır, Freze seçili ve değiştirilemez |
+| 8 | `D1` yaz ve Enter'a bas | Amber ekranda `MA-D1 → Freze` |
+| 9 | Aynı barkodu tekrar okut | Kırmızı ekranda "zaten Freze istasyonunda" |
+| 10 | Temsilci ekranında PO'yu yenile ve iş emri satırına tıkla | Durum "Freze"; geçmişte Freze, saat ve `freze` kullanıcısı görünür |
+| 11 | `paketleme` / `123` ile giriş yapıp `D1`'i okut | Yeşil ekranda "TAMAMLANDI" |
+| 12 | Temsilci ekranında **Excel'e aktar**'a tıkla | `.xlsx` iner; iş emri, geçmiş ve dağılım sayfaları dolu |
+| 13 | Başka bir pencerede `pano` / `123` ile giriş yap, sonra bir iş emri okut | Pano birkaç saniye içinde kendiliğinden güncellenir |
 
-### 11.5 Testin kapsamadığı şeyler
+### 12.5 Testin kapsamadığı şeyler
 
-- **Arayüzün otomatik testi yok.** Arayüz, geliştirme sırasında tarayıcıda yukarıdaki senaryoya benzer adımlarla elle test edildi.
-- **Gerçek eşzamanlılık testi yok.** İki cihazın aynı milisaniyede yazması otomatik testte denenmedi. Bu koruma kod incelemesine ([bölüm 8](#8-istasyon-ve-okutma-akışı)) ve Katman 2'nin tek başına çalıştığını gösteren bozma denemesine ([11.2](#112-testin-gerçekten-hata-yakaladığının-kanıtı)) dayanıyor.
+- **Arayüzün otomatik testi yok.** Arayüz, geliştirme sırasında tarayıcıda elle denendi. Excel Şablonu sayfası ve Excel'e aktar butonları tarayıcıda denenmedi; aynı uçlar otomatik testte doğrulandı.
+- **Microsoft Excel ile deneme yapılmadı;** Excel dosyaları LibreOffice ile doğrulandı.
+- **Gerçek eşzamanlılık testi yok.** Bu koruma kod incelemesine ([bölüm 8](#8-istasyon-ve-okutma-akışı)) ve bozma denemesine ([12.2](#122-testin-gerçekten-hata-yakaladığının-kanıtı)) dayanıyor.
 - **CORS başlıkları ve Apache `.htaccess` kurulumu test edilmedi.**
 - **Yük ve performans testi yapılmadı.**
 
 ---
 
-## 12. Yapılandırma
+## 13. Migration (şema güncelleme) sistemi
+
+[Database.php](backend/src/Database.php) içindeki `migrate()`:
+
+1. Her veritabanı bağlantısında `database/migrations/*.sql` dosyaları isim sırasıyla taranır.
+2. `schema_migrations` tablosunda kaydı olmayan dosyalar uygulanır.
+3. Her dosya kendi transaction'ında çalışır. Hata olursa o dosyanın değişiklikleri geri alınır ve uygulama hata verir. Yarım kalmış bir şema oluşmaz.
+4. İlk satırı `-- migrate:no-foreign-keys` olan dosyalar yabancı anahtarlar kapalıyken çalışır ([Database.php:70](backend/src/Database.php#L70)). SQLite'ta bir tablonun CHECK kısıtını değiştirmek için tabloyu yeniden kurmak gerekir; yabancı anahtarlar açıkken bu mümkün değil. Commit'ten önce `PRAGMA foreign_key_check` ile bütünlük doğrulanır; bozulmuşsa her şey geri alınır ([Database.php:78](backend/src/Database.php#L78)).
+
+**Mevcut migration'lar:**
+
+| Dosya | İçerik |
+|---|---|
+| `001_init.sql` | Temel tablolar: PO, iş emri, okutma |
+| `002_stations.sql` | İstasyonlar tablosu; iş emrine `current_station_id`; eski "okutulan adet" sütunu kaldırıldı |
+| `003_auth.sql` | Kullanıcılar ve oturumlar; `mami` ve istasyon hesapları; okutmalara `user_id` |
+| `004_new_stations.sql` | Elektrik, Freze, CNC eklendi; hat sırası yeniden düzenlendi; `elektrik`, `freze`, `cnc` hesapları |
+| `005_due_date_board.sql` | PO'ya termin tarihi; `board` rolü (users tablosu yeniden kuruldu); `pano` hesabı |
+| `006_remove_old_stations.sql` | Eski istasyonlar ve onlara bağlı okutma, kullanıcı ve oturumlar silindi; iş emirleri yeniden konumlandı |
+| `007_admin.sql` | `admin` rolü (users tablosu yeniden kuruldu) ve hesabı; hareket kayıtlarına `kind` (`scan` / `move`) ve `status` (hareketten sonraki durum) |
+
+**Kural:** Uygulanmış bir migration dosyasını **değiştirmeyin**. O değişiklik, dosyanın zaten
+uygulandığı veritabanlarına hiçbir zaman ulaşmaz. Yeni bir değişiklik için yeni numaralı bir dosya
+ekleyin (ör. `008_xxx.sql`).
+
+`004`, `005` ve `006` mevcut verisi olan veritabanının kopyası üzerinde denendi; PO'lar ve iş
+emirleri korundu.
+
+**Kanıt:** test bölüm 7, yedi migration'ın da kayıtlı olduğunu ve `migrate.php`'nin tekrar
+çalıştırılınca hata vermediğini doğrular.
+
+---
+
+## 14. Yapılandırma
 
 Backend ayarları ortam değişkenleriyle değiştirilebilir ([config.php](backend/config.php)):
 
@@ -598,109 +894,114 @@ Backend ayarları ortam değişkenleriyle değiştirilebilir ([config.php](backe
 |---|---|---|
 | `BARKOD_DB_PATH` | `backend/storage/app.sqlite` | Veritabanı dosyası |
 | `BARKOD_CORS_ORIGINS` | `*` | İzinli origin'ler, virgülle ayrılır |
-| `BARKOD_REP_KEY` | `dev-rep-key` | Temsilci anahtarı |
-| `BARKOD_PRODUCTION_KEY` | `dev-production-key` | Üretim anahtarı |
+| `BARKOD_TIMEZONE` | `Europe/Istanbul` | Excel'deki tarihler ve "bugün" hesapları için saat dilimi |
+| `BARKOD_PO_TEMPLATE` | `backend/storage/templates/po.xlsx` | Yüklenen özel Excel şablonunun yazılacağı yer |
 | `API_PORT`, `WEB_PORT` | `8000`, `5173` | `dev.sh` portları |
 
-Arayüz ayarları dosyalarda durur:
-- Temsilci sayfası: [frontend/rep/config.js](frontend/rep/config.js)
-- Üretim sayfası: [frontend/production/config.js](frontend/production/config.js)
-- Ana menü: [frontend/menu.js:2](frontend/menu.js#L2)
+Varsayılan Excel şablonu `backend/templates/po.xlsx`. Yeniden üretmek için:
 
-Backend'de anahtarı değiştirirseniz ilgili `config.js` dosyasını da güncellemeniz gerekir.
+```bash
+php backend/bin/build-po-template.php
+```
 
-### Başka bir cihazdan (tablet vb.) erişim
+### Başka bir bilgisayardan erişim
 
-`dev.sh` sunucuları `0.0.0.0` adresinde dinler, yani ağdaki tüm cihazlar bağlanabilir. Ancak
-**arayüz dosyalarında API adresi `http://localhost:8000` olarak yazılı**
-([rep/config.js:3](frontend/rep/config.js#L3), [production/config.js:3](frontend/production/config.js#L3), [menu.js:2](frontend/menu.js#L2)).
+`dev.sh` sunucuları `0.0.0.0` adresinde dinler; ağdaki tüm cihazlar bağlanabilir.
 
-Bir tablette `localhost`, tabletin kendisi demektir. Bu yüzden başka cihazdan kullanmadan önce bu
-üç yerdeki adresi sunucu bilgisayarın IP adresiyle değiştirmek gerekir
-(ör. `http://192.168.1.10:8000`).
+API adresi sabit yazılı değildir; sayfanın açıldığı adresten türetilir
+([api-base.js](frontend/shared/api-base.js)). `http://192.168.1.10:5173/` adresinden açılan sayfa
+API'yi `http://192.168.1.10:8000`'de arar. Böylece ayar yapmadan hem sunucu bilgisayarda
+(`localhost`) hem istasyon bilgisayarlarında çalışır.
+
+Her istasyon bilgisayarında tarayıcıdan `http://<sunucu-ip>:5173/` açılır ve o istasyonun
+hesabıyla giriş yapılır. Oturum 7 gün o tarayıcıda kalır.
+
+Bağlanılamıyorsa:
+1. O bilgisayardan `http://<sunucu-ip>:8000/api/v1/health` adresini açın.
+2. Açılmıyorsa sunucu bilgisayarın güvenlik duvarı 8000 ve 5173 portlarını engelliyor olabilir.
+
+API'nin portu değişirse [api-base.js](frontend/shared/api-base.js) içindeki `API_PORT` sabitini
+değiştirin.
 
 ---
 
-## 13. Bilinen sınırlamalar
-
-Bunlar bilinçli olarak sonraya bırakıldı veya henüz yapılmadı:
+## 15. Bilinen sınırlamalar
 
 | # | Sınırlama | Ayrıntı |
 |---|---|---|
-| 1 | **Güvenlik geliştirme seviyesinde** | Bkz. [bölüm 14](#14-güvenlik-durumu) |
-| 2 | **PO listesinde en fazla 50 PO görünür** | Sayfalama arayüzü yok ([rep/app.js:65](frontend/rep/app.js#L65), [api.js:50](frontend/shared/api.js#L50)). Daha eski PO'lara arama ile ulaşılabilir. API sayfalamayı destekliyor (`limit` en fazla 200, `offset`; [PurchaseOrderController.php:22](backend/src/Controllers/PurchaseOrderController.php#L22)) |
-| 3 | **Arayüzde iş emri düzenleme ve iptal yok** | API destekliyor (`PUT /work-orders/{id}`); arayüzde sadece ekleme ve silme var |
-| 4 | **Durum geçişleri elle değiştirilirken denetlenmiyor** | `PUT` ile `done` olan bir iş emri tekrar `open` yapılabilir. Sadece değerin geçerli bir durum olduğu kontrol ediliyor ([WorkOrderService.php:103](backend/src/Services/WorkOrderService.php#L103)) |
-| 5 | **İstasyon sırası zorunlu değil** | İş emri istasyon atlayabilir veya geri dönebilir (Boya → Kesim). Sadece "aynı istasyonda iki kez" ve "tamamlandıktan sonra" engelleniyor |
-| 6 | **İstasyonlar arayüzden yönetilemiyor** | Değiştirmek için yeni bir migration dosyası yazmak gerekiyor (`002`'yi değiştirmeyin). `active` sütunu var ama onu değiştiren bir arayüz yok |
-| 7 | **İstasyon geçmişi hiçbir ekranda gösterilmiyor** | Veri `scans` tablosunda kayıtlı, ama bunu okuyan bir API ucu ya da ekran yok |
-| 8 | **Silme kalıcıdır** | PO silinince iş emirleri ve okutma geçmişi de geri dönüşsüz silinir; "çöp kutusu" yok |
-| 9 | **Kimin yaptığı kaydedilmiyor** | Kullanıcı girişi yok; okutmalarda sadece istasyon tutuluyor |
-| 10 | **Zamanlar UTC olarak saklanıyor** | Arayüzde şu an zaman gösterilmiyor; ileride gösterilecekse yerel saate çevrilmeli |
-| 11 | **Migration kontrolü her istekte yapılıyor** | Bir dosya taraması ve bir sorgu; küçük bir yük. Yüksek trafikte bir kurulum adımına taşınabilir |
-| 12 | **`php -S` sadece geliştirme sunucusu** | Gerçek kullanım için Nginx/Apache + PHP-FPM gerekir ([.htaccess](backend/public/.htaccess) hazır) |
+| 1 | **Güvenlik yerel ağ seviyesinde** | Bkz. [bölüm 16](#16-güvenlik-durumu) |
+| 2 | **Kullanıcılar ve şifreler arayüzden yönetilemiyor** | Yeni kullanıcı veya şifre değişikliği için migration dosyası ya da doğrudan SQL gerekir |
+| 3 | **İstasyonlar arayüzden yönetilemiyor** | Değiştirmek için yeni bir migration dosyası gerekir |
+| 4 | **PO listesinde en fazla 200 PO** | Daha eskilerine arama ile ulaşılır. API sayfalamayı destekliyor (`limit` en fazla 200, `offset`; [PurchaseOrderController.php:22](backend/src/Controllers/PurchaseOrderController.php#L22)) |
+| 5 | **Arayüzde iş emri düzenleme ve iptal yok** | API destekliyor (`PUT /work-orders/{id}`); arayüzde ekleme ve silme var |
+| 6 | **Elle durum değişikliği denetlenmiyor** | `PUT` ile `done` olan bir iş emri tekrar `open` yapılabilir |
+| 7 | **İstasyon sırası zorunlu değil** | İş emri istasyon atlayabilir veya geri dönebilir; sadece "aynı istasyonda iki kez" ve "tamamlandıktan sonra" engellenir |
+| 8 | **Silme kalıcıdır** | PO silinince iş emirleri ve okutma geçmişi geri dönüşsüz silinir |
+| 9 | **İstasyon süreleri bekleme dahil** | Bir istasyondaki süre, iki okutma arasındaki süredir; net işlem süresi değildir |
+| 10 | **Excel şablonunda bazı yapılar kaydırılmaz** | Başka sayfaya işaret eden formüller, Excel Tablosu, yazdırma alanı ([10](#şablon-kuralları)) |
+| 11 | **Pano anlık değil, en geç ~3 saniye gecikmeli** | Sunucudan itme (WebSocket/SSE) yok; sorgulama ile çalışır |
+| 12 | **Migration kontrolü her istekte yapılıyor** | Bir dosya taraması ve bir sorgu; küçük bir yük |
+| 13 | **`php -S` sadece geliştirme sunucusu** | Gerçek kullanım için Nginx/Apache + PHP-FPM gerekir ([.htaccess](backend/public/.htaccess) hazır; `Authorization` başlığını da PHP'ye iletir) |
 
 ---
 
-## 14. Güvenlik durumu
+## 16. Güvenlik durumu
 
-**Mevcut korumalar** (test bölüm 1, 3 ve 7 ile doğrulandı):
-- **API anahtarı ve rol kontrolü** sunucu tarafında yapılır ([Router.php:34](backend/src/Http/Router.php#L34)).
-- **Girdi doğrulama** ([bölüm 7](#7-veri-doğrulama)).
-- **SQL injection'a karşı parametreli sorgular.**
-- **Arayüzde HTML kaçışlama** (XSS'e karşı).
-- **500 hatalarında iç ayrıntı sızdırılmaz** ([index.php:58-59](backend/public/index.php#L58-L59)).
+**Mevcut korumalar** (test bölüm 1, 3, 4 ve 7 ile doğrulandı):
+- **Kullanıcı adı / şifre ile giriş**, bcrypt ile saklanan şifreler.
+- **Süreli oturum token'ı** (7 gün); veritabanında sadece özeti tutulur; çıkışta silinir.
+- **Rol kontrolü sunucuda** ([Router.php:34](backend/src/Http/Router.php#L34)). Üretim kullanıcısı sadece kendi istasyonunda okutabilir; pano kullanıcısı sadece pano verisini görür.
+- **Her okutmada kimin yaptığı kaydedilir.**
+- **Girdi doğrulama** ([bölüm 7](#7-veri-doğrulama)), **parametreli sorgular**, **arayüzde HTML kaçışlama**.
+- **500 hatalarında iç ayrıntı sızdırılmaz.**
 
-**Açıklar.** Bu kurulum ağdaki birinin veri göndermesini **engellemez:**
+**Açıklar.** Gerçek veriyle kullanmadan önce bunlar giderilmeli:
 
-| Açık | Kanıt |
+| Açık | Ayrıntı |
 |---|---|
-| **Anahtarlar, ağa açık sunulan JS dosyalarında yazılı.** `http://<ip>:5173/rep/config.js` adresini açan herkes temsilci anahtarını okuyabilir | [rep/config.js:4](frontend/rep/config.js#L4) |
-| **Anahtarlar varsayılan değerlerde**; bu README'de ve docs/API.md'de de yazıyor | [config.php:17-18](backend/config.php#L17-L18) |
-| **Bağlantı şifresiz (HTTP).** Ağı dinleyen biri anahtarları görebilir | — |
-| **Sunucular tüm ağ arayüzlerinde dinliyor** | [dev.sh:13-15](scripts/dev.sh#L13-L15) |
-| **CORS herkese açık (`*`).** Not: CORS zaten tarayıcı dışı istemcileri durdurmaz | [config.php:10](backend/config.php#L10) |
-| **Deneme sayısı sınırı yok** | — |
+| **Tüm başlangıç şifreleri `123`** | Bu README'de ve migration dosyalarında yazıyor. Şifre değiştirme arayüzü yok |
+| **Bağlantı şifresiz (HTTP)** | Ağı dinleyen biri şifreleri ve token'ları görebilir |
+| **Deneme sayısı sınırı yok** | Şifre tahmin denemeleri engellenmiyor |
+| **Sunucular tüm ağ arayüzlerinde dinliyor** | [dev.sh](scripts/dev.sh) |
+| **CORS herkese açık (`*`)** | CORS zaten tarayıcı dışı istemcileri durdurmaz; token zorunluluğu asıl korumadır |
+| **Token tarayıcının `localStorage`'ında** | Sayfada bir XSS açığı olursa token okunabilir (HTML kaçışlama bunu önlemek için var) |
 
-**Planlanan çözüm** (gerçek veriyle kullanmadan önce yapılmalı):
-- Temsilciler için kullanıcı adı ve şifreyle giriş ve süresi dolan token.
-- Üretim cihazları için panelden eşleştirme ve iptal edilebilir cihaz token'ı.
-- Deneme sayısı sınırı.
-- İşlem kayıtlarında kullanıcı ve cihaz bilgisi.
-- HTTPS (ör. Caddy).
+**Önerilen sonraki adımlar:** şifreleri değiştirme (arayüz veya migration), deneme sınırı, HTTPS
+(ör. Caddy ile), kullanıcı yönetimi ekranı.
 
 O zamana kadar sistemi **sadece güvenilir yerel ağda** kullanın ve internete açmayın.
 
 ---
 
-## 15. Geliştirme rehberi
+## 17. Geliştirme rehberi
 
 ### Yeni bir client (cihaz) eklemek
 
-1. [docs/API.md](docs/API.md) sözleşmesini okuyun. Cevap biçimi `{"data":...}`, hata biçimi `{"error":{"code","message","field"}}`.
-2. Gerekirse [config.php](backend/config.php) içindeki `api_keys` listesine yeni bir anahtar ekleyin.
-3. Yeni bir rol gerekiyorsa [routes.php](backend/routes.php) içinde, o rolün erişeceği uçlara rolü ekleyin.
-4. Barkod okuma cihazı için gereken iki uç:
-   - `GET /api/v1/stations`
-   - `POST /api/v1/production/scan` gövde: `{"barcode":"...","station_id":N}`
+1. Uçlar ve izinli roller [bölüm 4](#uçlar-ve-izinli-roller)'te. Cevap biçimi `{"data":...}`, hata biçimi `{"error":{"code","message","field"}}`.
+2. Cihaz `POST /api/v1/auth/login` ile giriş yapar, dönen `token`'ı her istekte `Authorization: Bearer <token>` başlığıyla gönderir. 401 alırsa tekrar giriş yapar.
+3. Barkod okuma cihazı için istasyonun `production` hesabıyla giriş yapmak ve şu ucu çağırmak yeterli:
+   - `POST /api/v1/production/scan` gövde: `{"barcode":"..."}` (istasyon hesaptan gelir)
+4. Yeni bir rol gerekiyorsa `users.role` CHECK kısıtı için yeni bir migration yazın (bkz. `005`) ve [routes.php](backend/routes.php) içinde rolü ilgili uçlara ekleyin.
+
+> [docs/API.md](docs/API.md) giriş sistemi öncesinden kalma; eski API anahtarı yöntemini anlatıyor.
+> Güncel uç listesi bu README'dedir.
 
 ### Yeni bir sayfa eklemek
 
 1. `frontend/<sayfa>/` altında ayrı bir sayfa oluşturun.
-2. API'ye [shared/api.js](frontend/shared/api.js) üzerinden bağlanın.
-3. Ana menüye ([frontend/index.html](frontend/index.html)) bir kutucuk ekleyin.
-4. Sayfaya "← Ana menü" bağlantısı koyun.
+2. `requireSession([...roller])` ile oturum isteyin, API'ye `apiFor(session)` ile bağlanın ([shared/auth.js](frontend/shared/auth.js)).
+3. Ana menüye ([frontend/index.html](frontend/index.html)) bir satır ekleyin.
 
 ### Şemayı değiştirmek
 
-1. `backend/database/migrations/003_aciklama.sql` dosyasını oluşturun.
+1. `backend/database/migrations/008_aciklama.sql` dosyasını oluşturun. Tablo yeniden kurmanız gerekiyorsa ilk satıra `-- migrate:no-foreign-keys` yazın.
 2. Bir sonraki API isteğinde dosya otomatik uygulanır. Elle kontrol etmek için:
 
    ```bash
    php backend/bin/migrate.php
    ```
 
-3. `./scripts/test.sh` ile her şeyin hâlâ çalıştığını doğrulayın.
+3. `scripts/test.sh` içindeki "migration'lar kayıtlı" kontrolüne yeni dosyayı ekleyin ve `./scripts/test.sh` çalıştırın.
 
 ### Yeni bir iş kuralı eklemek
 

@@ -1,126 +1,338 @@
+/* ==========================================================================
+   Arayüz temeli — endüstriyel HMI / MES yaklaşımı (ISA-101 ilkeleri):
+   - Yüzeyler nötr gri; renk SADECE durum bildirir:
+     yeşil = tamam, amber = hatta / dikkat, kırmızı = hata, mavi = seçim / odak.
+   - Süs yok: gölge, parlama, gradyan, yuvarlak köşe kullanılmaz.
+   - Yoğun, okunaklı, tablo odaklı. Sayılar sabit genişlikte (tabular-nums).
+   - Dış kaynak yok: fabrika ağında internet olmayabilir.
+   ========================================================================== */
+
 :root {
-  --bg: #f4f5f7;
-  --surface: #ffffff;
-  --text: #1c1f24;
-  --muted: #6b7280;
-  --border: #dde0e5;
-  --primary: #2458d6;
-  --primary-text: #ffffff;
-  --ok: #1a7f4b;
-  --ok-bg: #e3f5eb;
-  --warn: #9a6200;
-  --warn-bg: #fff3d6;
-  --danger: #c02b2b;
-  --danger-bg: #fde7e7;
-  --radius: 8px;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font: "Segoe UI", "Noto Sans", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Cascadia Mono", "JetBrains Mono", Consolas, "DejaVu Sans Mono", ui-monospace, monospace;
+
+  /* Ofis (açık) */
+  --bg: #e3e5e8;
+  --surface: #f3f4f5;
+  --field: #ffffff;
+  --line: #c4c8cd;
+  --line-strong: #8f969e;
+  --text: #1c1f23;
+  --muted: #5c636b;
+  --chrome: #2a2e33;          /* başlık / durum çubuğu */
+  --chrome-text: #e4e6e8;
+  --chrome-muted: #9aa1a8;
+  --chrome-line: #3b4047;
+
+  --sel: #1f5fbf;
+  --sel-btn: #1f5fbf;          /* birincil buton zemini (beyaz yazıyla okunur) */
+  --sel-bg: #dbe6f6;
+  --ok: #1d7f3a;
+  --ok-bg: #e2efe5;
+  --warn: #b26f00;
+  --warn-bg: #f6ecd7;
+  --alarm: #c21f18;
+  --alarm-bg: #f7e0de;
+  --idle: #7a8189;
+
+  --r: 2px;
+  font-family: var(--font);
+  color-scheme: light;
 }
 
+/* Atölye (koyu): sistem koyuysa veya sayfa data-theme="dark" ise */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #15171b;
-    --surface: #1f2228;
-    --text: #e8eaed;
-    --muted: #9aa0a8;
-    --border: #33373f;
-    --primary: #5b8cff;
-    --ok: #5fd39a;
-    --ok-bg: #173226;
-    --warn: #f0c060;
-    --warn-bg: #3a2f14;
-    --danger: #ff7b7b;
-    --danger-bg: #3d1c1c;
+  :root:not([data-theme="light"]) {
+    --bg: #16181b;
+    --surface: #1e2125;
+    --field: #25292e;
+    --line: #343940;
+    --line-strong: #4d545c;
+    --text: #e5e7e9;
+    --muted: #979da4;
+    --chrome: #0f1113;
+    --chrome-line: #2a2e33;
+    --sel: #5b95f0;
+    --sel-btn: #2c62b8;
+    --sel-bg: #1d2a3d;
+    --ok: #43b865;
+    --ok-bg: #16281c;
+    --warn: #e39a1c;
+    --warn-bg: #2c2312;
+    --alarm: #ec4a40;
+    --alarm-bg: #331917;
+    --idle: #808790;
+    color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #16181b;
+  --surface: #1e2125;
+  --field: #25292e;
+  --line: #343940;
+  --line-strong: #4d545c;
+  --text: #e5e7e9;
+  --muted: #979da4;
+  --chrome: #0f1113;
+  --chrome-line: #2a2e33;
+  --sel: #5b95f0;
+  --sel-btn: #2c62b8;
+  --sel-bg: #1d2a3d;
+  --ok: #43b865;
+  --ok-bg: #16281c;
+  --warn: #e39a1c;
+  --warn-bg: #2c2312;
+  --alarm: #ec4a40;
+  --alarm-bg: #331917;
+  --idle: #808790;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html, body { height: 100%; }
 
 body {
   margin: 0;
+  display: flex;
+  flex-direction: column;
   background: var(--bg);
   color: var(--text);
-  font-size: 15px;
+  font-size: 14px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
 }
 
-header.top {
+main { flex: 1; }
+
+/* ---------- Başlık çubuğu ---------- */
+
+.titlebar {
+  display: flex;
+  align-items: stretch;
+  height: 40px;
+  background: var(--chrome);
+  color: var(--chrome-text);
+  border-bottom: 1px solid #000;
+  flex: none;
+}
+.titlebar .app {
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  color: var(--chrome-text);
+  text-decoration: none;
+  font-weight: 700;
+  border-right: 1px solid var(--chrome-line);
+}
+.titlebar .app:hover { background: #000; }
+.titlebar .crumb {
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  font-weight: 600;
+}
+.titlebar .spacer { flex: 1; }
+.titlebar .tb-item {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  color: var(--chrome-muted);
+  border-left: 1px solid var(--chrome-line);
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+a.tb-item:hover { color: var(--chrome-text); background: #000; }
+
+/* ---------- Durum çubuğu ---------- */
+
+.statusbar {
+  display: flex;
+  align-items: stretch;
+  height: 26px;
+  background: var(--chrome);
+  color: var(--chrome-muted);
+  border-top: 1px solid #000;
+  font-size: 12px;
+  flex: none;
+}
+.statusbar > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border-right: 1px solid var(--chrome-line);
+  white-space: nowrap;
+}
+.statusbar .sb-right { margin-left: auto; border-right: 0; border-left: 1px solid var(--chrome-line); }
+.statusbar b { color: var(--chrome-text); font-weight: 600; }
+
+/* Kare durum göstergesi (HMI'larda yuvarlak LED yerine kare yaygındır) */
+.sq {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  background: var(--idle);
+  flex: none;
+}
+.sq.ok    { background: var(--ok); }
+.sq.warn  { background: var(--warn); }
+.sq.alarm { background: var(--alarm); }
+
+/* ---------- Bölüm ---------- */
+
+.pane {
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.pane-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+  font-size: 13px;
 }
-header.top h1 { font-size: 18px; margin: 0; }
-header.top .top-left { display: flex; align-items: center; gap: 14px; }
-header.top a.back {
-  color: var(--muted);
-  text-decoration: none;
-  font-size: 14px;
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-header.top a.back:hover { color: var(--text); border-color: var(--text); }
+.pane-body { padding: 12px; }
 
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-}
+/* ---------- Form ---------- */
 
 input, select, textarea, button { font: inherit; }
 
 input, select, textarea {
   width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--field);
   color: var(--text);
 }
-input.invalid { border-color: var(--danger); }
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid var(--sel);
+  outline-offset: -1px;
+  border-color: var(--sel);
+}
+input.invalid { border-color: var(--alarm); outline-color: var(--alarm); }
 
 button {
-  padding: 8px 14px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--field);
   color: var(--text);
+  font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
 }
-button.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-text); }
-button.danger { color: var(--danger); }
+button:hover { background: var(--bg); }
+button:focus-visible { outline: 2px solid var(--sel); outline-offset: 1px; }
+button.primary { background: var(--sel-btn); border-color: var(--sel-btn); color: #fff; }
+button.primary:hover { filter: brightness(1.08); }
+button.danger { color: var(--alarm); }
+button.danger:hover { background: var(--alarm-bg); border-color: var(--alarm); }
 button:disabled { opacity: .5; cursor: default; }
 
-label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
-.field { margin-bottom: 10px; }
-.field-error { color: var(--danger); font-size: 12px; min-height: 16px; margin-top: 2px; }
+label {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.field { margin-bottom: 8px; }
+.field-error { color: var(--alarm); font-size: 12px; min-height: 16px; margin-top: 2px; }
+
+/* ---------- Tablo ---------- */
 
 table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); }
-th { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; }
+th, td {
+  height: 32px;
+  padding: 4px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+th {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  border-bottom-color: var(--line-strong);
+  white-space: nowrap;
+}
+tbody tr:hover td { background: color-mix(in srgb, var(--sel-bg) 45%, transparent); }
+td.num, th.num { text-align: right; }
 
-.badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 12px; font-weight: 600; }
-.badge.open { background: var(--bg); color: var(--muted); }
-.badge.in_progress { background: var(--warn-bg); color: var(--warn); }
-.badge.done { background: var(--ok-bg); color: var(--ok); }
-.badge.cancelled { background: var(--danger-bg); color: var(--danger); }
+/* ---------- Durum ---------- */
+
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+.state::before { content: ""; width: 9px; height: 9px; background: var(--idle); flex: none; }
+.state.in_progress::before { background: var(--warn); }
+.state.done::before        { background: var(--ok); }
+.state.cancelled::before   { background: var(--alarm); }
+.state.cancelled           { color: var(--alarm); }
+
+/* Hat konumu: her hücre bir istasyon; dolu hücre iş emrinin şu anki istasyonu.
+   (Soldaki hücreler "geçti" anlamına gelmez; istasyon atlanabilir.) */
+.loc { display: inline-flex; gap: 1px; vertical-align: middle; }
+.loc i { width: 12px; height: 10px; background: var(--line); }
+.loc i.at { background: var(--warn); }
+.loc.done i.at { background: var(--ok); }
+
+/* İş emri istasyon geçmişi (shared/history.js): satırın altında açılır */
+tr.wo-open td { background: var(--sel-bg); }
+tr.wo-open td:first-child { box-shadow: inset 3px 0 0 var(--sel); }
+tr.wo-history > td,
+tr.wo-history:hover > td { padding: 0; background: var(--bg); }
+.hist { padding: 10px 12px 12px 44px; }
+.hist-title { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+.hist table { background: var(--surface); border: 1px solid var(--line); }
+.hist th { position: static; }
+.hist td { height: 28px; }
+.hist td.idx { color: var(--muted); font-family: var(--font-mono); font-size: 12px; }
+.hist tbody tr:last-child td { border-bottom: 0; }
 
 .muted { color: var(--muted); }
-.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.mono { font-family: var(--font-mono); }
+
+kbd {
+  display: inline-block;
+  min-width: 22px;
+  padding: 1px 6px;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--r);
+  background: var(--field);
+  font: 600 12px var(--font-mono);
+  text-align: center;
+}
 
 .toast {
   position: fixed;
-  right: 16px;
-  bottom: 16px;
-  max-width: calc(100% - 32px);
-  padding: 10px 14px;
-  border-radius: 6px;
-  background: var(--text);
-  color: var(--bg);
+  right: 12px;
+  bottom: 38px;
+  max-width: calc(100% - 24px);
+  padding: 8px 12px;
+  background: var(--chrome);
+  color: var(--chrome-text);
+  border-left: 4px solid var(--sel);
+  font-size: 13px;
   opacity: 0;
-  transition: opacity .2s;
+  transition: opacity .15s;
   pointer-events: none;
 }
 .toast.show { opacity: 1; }

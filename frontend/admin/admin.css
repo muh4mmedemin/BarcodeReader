@@ -1,0 +1,51 @@
+.admin {
+  width: 100%;
+  max-width: 1300px;
+  margin: 0 auto;
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.toolbar input { flex: 1; min-width: 220px; }
+
+/* Bölümlü seçici */
+.seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: var(--r); overflow: hidden; }
+.seg button { border: 0; border-radius: 0; border-right: 1px solid var(--line-strong); }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-checked="true"] { background: var(--sel); color: #fff; }
+
+.table-wrap { overflow-x: auto; }
+.wo-table tbody tr.wo { cursor: pointer; }
+.wo-table tbody tr.wo:hover td { background: var(--bg); }
+.wo-table td.empty { padding: 16px 12px; }
+
+/* Taşıma paneli: satırın altında açılır */
+.move { padding: 12px 12px 4px 44px; }
+.move-title { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+.targets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+.targets button {
+  height: 48px;
+  border: 0;
+  border-radius: 0;
+  background: var(--surface);
+  text-align: left;
+  font-weight: 600;
+}
+.targets button:hover:not(:disabled) { background: var(--sel-bg); }
+.targets button.current {
+  background: var(--sel-bg);
+  box-shadow: inset 0 0 0 2px var(--sel);
+  opacity: 1;
+}
+.targets button small { display: block; font: 600 10px var(--font-mono); color: var(--muted); }
+.targets button.t-cancel { color: var(--alarm); }
+.move .field-error { margin-top: 6px; }

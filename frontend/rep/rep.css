@@ -1,36 +1,192 @@
-.layout {
+.workspace {
   display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: 16px;
-  padding: 16px;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
   align-items: start;
+  width: 100%;
+  max-width: 1500px;
+  margin: 0 auto;
 }
-@media (max-width: 800px) {
-  .layout { grid-template-columns: 1fr; }
+@media (max-width: 900px) {
+  .workspace { grid-template-columns: 1fr; }
 }
 
-h2 { font-size: 16px; margin: 0 0 12px; }
-h3 { font-size: 14px; margin: 0 0 10px; }
-hr { border: 0; border-top: 1px solid var(--border); margin: 16px 0; }
+/* ---------- Sol panel: PO defteri ---------- */
 
-.po-list { list-style: none; margin: 10px 0 0; padding: 0; max-height: 60vh; overflow: auto; }
-.po-list li {
-  padding: 8px 10px;
-  border-radius: 6px;
-  cursor: pointer;
+.side { display: flex; flex-direction: column; max-height: calc(100vh - 92px); position: sticky; top: 12px; }
+@media (max-width: 900px) { .side { position: static; max-height: none; } }
+
+.side-head {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
 }
-.po-list li:hover { background: var(--bg); }
-.po-list li.active { background: var(--primary); color: var(--primary-text); }
-.po-list li.active .muted { color: inherit; opacity: .8; }
+.side-title { margin: 0; font-size: 18px; font-weight: 700; display: flex; align-items: baseline; gap: 8px; }
+.side-count { font-size: 13px; font-weight: 600; color: var(--muted); }
+.new-btn { display: inline-flex; align-items: center; gap: 8px; }
+.new-btn[aria-expanded="true"] { background: var(--sel-bg); border-color: var(--sel); color: var(--sel); }
+.new-btn kbd, .np-actions kbd { font-size: 11px; padding: 0 5px; }
 
-.detail-head { display: flex; justify-content: space-between; align-items: start; margin-bottom: 16px; }
-.detail-head h2 { margin: 0; font-size: 20px; }
+/* Yeni PO formu: listenin üstünde açılan çekmece */
+.new-po {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  box-shadow: inset 3px 0 0 var(--sel);
+}
+.np-field label { margin-bottom: 4px; }
+.np-po { height: 40px; font-size: 18px; font-weight: 600; letter-spacing: .03em; }
+.np-two { display: grid; grid-template-columns: 1fr 150px; gap: 8px; }
+.np-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
+.new-po .field-error:empty { min-height: 0; margin: 0; }
 
-.wo-form { background: var(--bg); padding: 12px; border-radius: var(--radius); margin-bottom: 16px; }
-.wo-form input { background: var(--surface); }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0 12px; }
+/* Arama + filtre */
+.finder { padding: 10px 12px; display: grid; gap: 8px; border-bottom: 1px solid var(--line); }
+.find {
+  display: flex;
+  align-items: stretch;
+  margin: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--field);
+}
+.find:focus-within { outline: 2px solid var(--sel); outline-offset: -1px; border-color: var(--sel); }
+.find-prefix {
+  display: flex;
+  align-items: center;
+  padding: 0 9px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: var(--muted);
+  border-right: 1px solid var(--line);
+}
+.find input { border: 0; background: transparent; outline: none; }
+.find input:focus { outline: none; }
 
-.detail { overflow-x: auto; }
+.filters { display: flex; flex-wrap: wrap; gap: 4px; }
+.filters button {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  border-color: var(--line);
+  color: var(--muted);
+}
+.filters button b { margin-left: 3px; font-family: var(--font-mono); color: var(--text); font-weight: 600; }
+.filters button[aria-checked="true"] { background: var(--text); border-color: var(--text); color: var(--surface); }
+.filters button[aria-checked="true"] b { color: var(--surface); }
+
+/* PO satırları */
+.ledger { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; min-height: 120px; }
+.po-item {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px 10px 14px;
+  border-bottom: 1px solid var(--line);
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  outline: none;
+}
+.po-item:hover { background: var(--field); }
+.po-item:focus-visible { box-shadow: inset 0 0 0 2px var(--sel); }
+.po-item.due-late { border-left-color: var(--alarm); }
+.po-item.due-soon { border-left-color: var(--warn); }
+.po-item.active { background: var(--sel-bg); border-left-color: var(--sel); }
+
+.li-top, .li-mid, .li-bot { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.li-no { font-size: 15px; font-weight: 700; }
+.li-pct { font-size: 13px; font-weight: 700; color: var(--muted); }
+.po-item.complete .li-pct { color: var(--ok); }
+.li-cust { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.li-due { font-size: 12px; font-weight: 600; white-space: nowrap; color: var(--muted); }
+.po-item.due-late .li-due { color: var(--alarm); }
+.po-item.due-soon .li-due { color: var(--warn); }
+
+.li-bar { flex: 1; display: flex; height: 6px; background: var(--line); overflow: hidden; }
+.li-bar i { display: block; height: 100%; }
+.li-bar .b-done { background: var(--ok); }
+.li-bar .b-prog { background: var(--warn); }
+.li-count { font-size: 11px; color: var(--muted); min-width: 34px; text-align: right; }
+
+.ledger-empty { padding: 20px 12px; color: var(--muted); }
+
+/* ---------- Sağ panel ---------- */
+
+.po-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.po-no { font-size: 22px; font-weight: 700; }
+.po-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.po-meta { display: flex; flex-wrap: wrap; gap: 4px 20px; margin-top: 2px; color: var(--muted); font-size: 13px; }
+.po-meta b { color: var(--text); font-weight: 600; }
+
+.counts {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+}
+.counts > div {
+  flex: 1;
+  padding: 8px 12px;
+  border-right: 1px solid var(--line);
+}
+.counts > div:last-child { border-right: 0; }
+.counts .c-label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.counts .c-value { font: 700 20px var(--font-mono); }
+
+.wo-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  align-items: start;
+  padding: 10px 12px 2px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.wo-form .field { width: 170px; margin-bottom: 4px; }
+.wo-form .field.qty { width: 80px; }
+.wo-form .field.grow { flex: 1; min-width: 160px; }
+.wo-form .field:last-child { width: auto; }
+
+.wo-scroll { overflow-x: auto; }
+.wo-table td.idx { color: var(--muted); font-family: var(--font-mono); font-size: 12px; width: 40px; }
+.wo-table td.act { width: 1%; text-align: right; }
+.wo-table td.act button { height: 26px; padding: 0 10px; font-size: 12px; }
+.wo-table tbody tr:last-child td { border-bottom: 0; }
+.wo-table tr.empty td { color: var(--muted); height: 48px; }
+
+/* ---------- Konum dağılımı ---------- */
+
+.dist { border-bottom: 1px solid var(--line); }
+.dist td { height: 28px; }
+.dist th { position: static; }
+.dist tr.zero td { color: var(--muted); }
+.dist tr.zero .state::before { opacity: .4; }
+.dist .dist-bar-col { width: 45%; }
+.dist-bar { display: block; height: 10px; background: var(--bg); border: 1px solid var(--line); }
+.dist-bar i { display: block; height: 100%; background: var(--idle); }
+.dist-bar.in_progress i { background: var(--warn); }
+.dist-bar.done i        { background: var(--ok); }
+.dist-bar.cancelled i   { background: var(--alarm); }
+
+/* ---------- İş emri geçmişi ---------- */
+
+.wo-table tbody tr[data-id] { cursor: pointer; }
+
+/* ---------- Termin ---------- */
+
+.due-edit { display: inline-flex; align-items: center; gap: 6px; }
+.due-edit input { width: auto; height: 26px; padding: 0 6px; font-size: 13px; }
+.due-tag.late { color: var(--alarm); }
+.due-tag.soon { color: var(--warn); }

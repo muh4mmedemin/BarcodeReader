@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Üretim Analizi — BarcodeReader</title>
+  <link rel="stylesheet" href="../shared/base.css">
+  <link rel="stylesheet" href="analysis.css">
+</head>
+<body>
+  <header class="titlebar">
+    <a class="app" href="../">BarcodeReader</a>
+    <span class="crumb">Üretim Analizi</span>
+    <span class="spacer"></span>
+    <a class="tb-item" href="../">Ana menü</a>
+    <span class="tb-item" id="tb-user"></span>
+    <a class="tb-item" id="tb-logout" href="#">Çıkış</a>
+  </header>
+
+  <main class="analysis">
+    <div class="toolbar">
+      <div class="seg" id="period" role="radiogroup" aria-label="Dönem">
+        <button type="button" role="radio" data-days="7">7 gün</button>
+        <button type="button" role="radio" data-days="30">30 gün</button>
+        <button type="button" role="radio" data-days="90">90 gün</button>
+      </div>
+      <span class="muted mono" id="updated-at"></span>
+    </div>
+
+    <dl class="figures" id="figures"></dl>
+
+    <section class="pane">
+      <div class="pane-head">
+        <span>İstasyon süreleri</span>
+        <span class="muted">Süre: istasyondaki okutmadan bir sonraki istasyondaki okutmaya kadar</span>
+      </div>
+      <div class="table-scroll">
+        <table class="stations">
+          <thead>
+            <tr>
+              <th>İstasyon</th>
+              <th class="num">Geçiş</th>
+              <th class="num">Ort. süre</th>
+              <th class="num">En uzun</th>
+              <th class="num">Şu an hatta</th>
+              <th class="bar-col">Ortalama süre</th>
+            </tr>
+          </thead>
+          <tbody id="station-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="pane">
+      <div class="pane-head">
+        <span>Günlük tamamlanan iş emri</span>
+        <span class="muted" id="daily-total"></span>
+      </div>
+      <div class="chart" id="daily-chart"></div>
+    </section>
+  </main>
+
+  <footer class="statusbar">
+    <span><i id="sb-led" class="sq"></i><span id="sb-conn">Bağlanıyor…</span></span>
+    <span>API <b id="sb-api" class="mono"></b></span>
+    <span class="sb-right mono" id="sb-clock"></span>
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

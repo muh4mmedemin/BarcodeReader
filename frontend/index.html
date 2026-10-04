@@ -3,53 +3,74 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Ana Menü</title>
+  <title>Ana Menü — BarcodeReader</title>
   <link rel="stylesheet" href="shared/base.css">
   <link rel="stylesheet" href="menu.css">
 </head>
 <body>
-  <header class="top">
-    <h1>Barkod Sistemi</h1>
-    <span class="server-status"><span id="status-dot" class="dot"></span><span id="server-status">Bağlanıyor…</span></span>
+  <header class="titlebar">
+    <a class="app" href="./">BarcodeReader</a>
+    <span class="crumb">Ana menü</span>
+    <span class="spacer"></span>
+    <span class="tb-item" id="today"></span>
+    <span class="tb-item" id="tb-user"></span>
+    <a class="tb-item" id="tb-logout" href="#">Çıkış</a>
   </header>
 
-  <main class="menu">
-    <div class="menu-head">
-      <h2>Ana Menü</h2>
-      <p class="muted" id="today"></p>
-    </div>
-
-    <nav class="tiles">
-      <a class="tile" href="rep/" data-key="1">
-        <span class="tile-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
-            <path d="M14 3v6h6"/><path d="M12 18v-6"/><path d="M9 15h6"/>
-          </svg>
-        </span>
-        <span class="tile-text">
-          <span class="tile-title">PO Oluşturma</span>
-          <span class="tile-desc">PO aç, iş emri ekle, iş emirlerinin hangi istasyonda olduğunu takip et.</span>
-        </span>
-        <kbd>1</kbd>
-      </a>
-
-      <a class="tile" href="production/" data-key="2">
-        <span class="tile-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/>
-            <path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
-            <path d="M7 8v8"/><path d="M10 8v8"/><path d="M13 8v8"/><path d="M17 8v8"/>
-          </svg>
-        </span>
-        <span class="tile-text">
-          <span class="tile-title">İş Emri Okut</span>
-          <span class="tile-desc">İstasyonu seç, barkodu gir; iş emri o istasyona geçsin.</span>
-        </span>
-        <kbd>2</kbd>
-      </a>
-    </nav>
+  <main class="launcher">
+    <section class="pane">
+      <div class="pane-head">Modüller</div>
+      <table class="modules">
+        <thead>
+          <tr><th class="key">Tuş</th><th>Modül</th><th class="desc">Açıklama</th><th>Kullanıcı</th></tr>
+        </thead>
+        <tbody>
+          <tr data-key="1" data-href="rep/">
+            <td class="key"><kbd>1</kbd></td>
+            <td><a href="rep/">PO Oluşturma</a></td>
+            <td class="desc">PO kaydı, iş emri girişi, iş emirlerinin hat üzerindeki konumu</td>
+            <td class="muted">Müşteri temsilcisi</td>
+          </tr>
+          <tr data-key="2" data-href="production/">
+            <td class="key"><kbd>2</kbd></td>
+            <td><a href="production/">İş Emri Okut</a></td>
+            <td class="desc">İstasyon seçimi ve barkod okutma; iş emrini istasyona alır</td>
+            <td class="muted">Üretim</td>
+          </tr>
+          <tr data-key="3" data-href="report/">
+            <td class="key"><kbd>3</kbd></td>
+            <td><a href="report/">PO Takip</a></td>
+            <td class="desc">PO'lardaki iş emirlerinin detayı ve konum dağılımı</td>
+            <td class="muted">Müşteri temsilcisi</td>
+          </tr>
+          <tr data-key="4" data-href="analysis/">
+            <td class="key"><kbd>4</kbd></td>
+            <td><a href="analysis/">Üretim Analizi</a></td>
+            <td class="desc">İstasyonlarda geçen süreler, darboğaz, günlük tamamlanan iş emri</td>
+            <td class="muted">Müşteri temsilcisi</td>
+          </tr>
+          <tr data-key="5" data-href="board/">
+            <td class="key"><kbd>5</kbd></td>
+            <td><a href="board/">Atölye Panosu</a></td>
+            <td class="desc">TV ekranı: istasyonlarda bekleyen iş, bugünün sayıları, termin takibi</td>
+            <td class="muted">Pano, müşteri temsilcisi</td>
+          </tr>
+          <tr data-key="6" data-href="template/">
+            <td class="key"><kbd>6</kbd></td>
+            <td><a href="template/">Excel Şablonu</a></td>
+            <td class="desc">PO dışa aktarma şablonunu indir, düzenle, yükle</td>
+            <td class="muted">Müşteri temsilcisi</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
   </main>
+
+  <footer class="statusbar">
+    <span><i id="sb-led" class="sq"></i><span id="sb-conn">Bağlanıyor…</span></span>
+    <span>API <b id="sb-api" class="mono"></b></span>
+    <span class="sb-right mono" id="sb-clock"></span>
+  </footer>
 
   <script type="module" src="menu.js"></script>
 </body>

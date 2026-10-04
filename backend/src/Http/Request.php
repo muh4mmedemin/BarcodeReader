@@ -6,8 +6,11 @@ namespace App\Http;
 
 final class Request
 {
-    /** Kimliği doğrulanmış client'ın rolü (rep | production). Auth sonrası set edilir. */
+    /** Giriş yapmış kullanıcının rolü (rep | production). Auth sonrası set edilir. */
     public ?string $role = null;
+
+    /** Giriş yapmış kullanıcı (id, username, role, station_id, station_name). */
+    public ?array $user = null;
 
     private function __construct(
         public readonly string $method,
@@ -42,6 +45,21 @@ final class Request
     public function header(string $name): ?string
     {
         return $this->headers[strtolower($name)] ?? null;
+    }
+
+    /** "Authorization: Bearer <token>" başlığındaki token. */
+    public function bearerToken(): ?string
+    {
+        $header = $this->header('authorization') ?? '';
+        return preg_match('/^Bearer\s+([A-Fa-f0-9]{64})$/', trim($header), $m) ? $m[1] : null;
+    }
+
+    /** Başarıyla yüklenmiş dosyanın geçici yolu (multipart/form-data), yoksa null. */
+    public function uploadedFile(string $name): ?string
+    {
+        $f = $_FILES[$name] ?? null;
+        return is_array($f) && ($f['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK && is_uploaded_file($f['tmp_name'])
+            ? $f['tmp_name'] : null;
     }
 
     public function json(): array

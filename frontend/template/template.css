@@ -1,0 +1,76 @@
+.tpl {
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+/* Geçerli şablon */
+.current { padding: 14px 12px; display: grid; gap: 12px; }
+.current-state { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.current-state .state { font-size: 16px; font-weight: 700; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* <label> buton görünümünde (dosya seçici) */
+label.button {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  margin: 0;
+  padding: 0 14px;
+  border: 1px solid var(--sel-btn);
+  border-radius: var(--r);
+  background: var(--sel-btn);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+label.button:hover { filter: brightness(1.08); }
+label.button.busy { opacity: .6; pointer-events: none; }
+
+.result { margin: 0; min-height: 20px; font-size: 13px; }
+.result.ok { color: var(--ok); }
+.result.error { color: var(--alarm); }
+
+/* Kurallar */
+.rules { margin: 0; padding: 12px 12px 12px 34px; display: grid; gap: 6px; line-height: 1.5; }
+code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  padding: 1px 5px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+
+/* Yer tutucular */
+.ph-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+.ph-group { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.ph-group h3 {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.ph-group td { height: 30px; }
+.ph-group tbody tr:last-child td { border-bottom: 0; }
+.ph-key {
+  width: 1%;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  cursor: copy;
+}
+.ph-key:hover { color: var(--sel); text-decoration: underline; }
+.ph-key.copied { color: var(--ok); }
+
+@media (max-width: 520px) {
+  .ph-groups { grid-template-columns: 1fr; }
+}

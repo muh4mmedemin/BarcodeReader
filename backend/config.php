@@ -9,12 +9,10 @@ return [
     // Virgülle ayrılmış izinli origin listesi. "*" = hepsi (geliştirme için).
     'cors_origins' => getenv('BARKOD_CORS_ORIGINS') ?: '*',
 
-    // Her client kendi API anahtarı ile gelir; anahtar hangi rolde olduğunu belirler.
-    //   rep        -> müşteri temsilcisi: PO ve iş emri yönetimi
-    //   production -> üretim: sadece barkod sorgulama ve okutma
-    // Üretimde bu anahtarları mutlaka değiştirin (ortam değişkeni ile).
-    'api_keys' => [
-        (getenv('BARKOD_REP_KEY') ?: 'dev-rep-key')               => 'rep',
-        (getenv('BARKOD_PRODUCTION_KEY') ?: 'dev-production-key') => 'production',
-    ],
+    // Tarihlerin gösterildiği saat dilimi (veritabanında UTC saklanır).
+    'timezone' => getenv('BARKOD_TIMEZONE') ?: 'Europe/Istanbul',
+
+    // Excel dışa aktarma şablonları: yüklenen özel şablon varsa o, yoksa varsayılan kullanılır.
+    'po_template_default' => __DIR__ . '/templates/po.xlsx',
+    'po_template_custom'  => getenv('BARKOD_PO_TEMPLATE') ?: __DIR__ . '/storage/templates/po.xlsx',
 ];

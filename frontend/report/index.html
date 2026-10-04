@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PO Takip — BarcodeReader</title>
+  <link rel="stylesheet" href="../shared/base.css">
+  <link rel="stylesheet" href="report.css">
+</head>
+<body>
+  <header class="titlebar">
+    <a class="app" href="../">BarcodeReader</a>
+    <span class="crumb">PO Takip</span>
+    <span class="spacer"></span>
+    <a class="tb-item" href="../">Ana menü</a>
+    <span class="tb-item" id="tb-user"></span>
+    <a class="tb-item" id="tb-logout" href="#">Çıkış</a>
+  </header>
+
+  <main class="report">
+    <!-- Genel durum: tüm PO'lardaki iş emirleri -->
+    <section class="pane">
+      <div class="pane-head">
+        <span>Genel durum</span>
+        <span class="muted mono" id="updated-at"></span>
+      </div>
+      <div class="summary">
+        <div class="pie-block" id="overall-pie"></div>
+        <dl class="figures" id="figures"></dl>
+      </div>
+    </section>
+
+    <div class="toolbar">
+      <input id="search" type="search" aria-label="PO no, müşteri, MA kodu veya barkod ara">
+      <label class="check"><input type="checkbox" id="hide-done"> Tamamlanan PO'ları gizle</label>
+      <label class="check"><input type="checkbox" id="only-risk"> Sadece geciken / termini yaklaşan</label>
+      <button type="button" id="refresh">Yenile</button>
+    </div>
+
+    <div id="po-cards" class="po-cards"></div>
+  </main>
+
+  <footer class="statusbar">
+    <span><i id="sb-led" class="sq"></i><span id="sb-conn">Bağlanıyor…</span></span>
+    <span>API <b id="sb-api" class="mono"></b></span>
+    <span class="sb-right mono" id="sb-clock"></span>
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

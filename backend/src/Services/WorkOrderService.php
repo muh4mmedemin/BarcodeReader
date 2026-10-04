@@ -109,6 +109,62 @@ final class WorkOrderService
         return $this->get($id);
     }
 
+    /**
+     * Tüm PO'lar ve içlerindeki iş emirleri (rapor sayfası için tek sorguda).
+     * Her iş emrine son okutma zamanı (last_scan_at) eklenir.
+     */
+    public function overview(): array
+    {
+        $pos = $this->db->query('SELECT * FROM purchase_orders ORDER BY created_at DESC, id DESC')->fetchAll();
+
+        $rows = $this->db->query(
+            'SELECT w.*, p.po_number, p.customer, s.name AS current_station_name,
+                    (SELECT MAX(sc.scanned_at) FROM scans sc WHERE sc.work_order_id = w.id) AS last_scan_at
+               FROM work_orders w
+               JOIN purchase_orders p ON p.id = w.po_id
+               LEFT JOIN stations s ON s.id = w.current_station_id
+              ORDER BY w.po_id, w.id'
+        )->fetchAll();
+
+        $byPo = [];
+        foreach ($rows as $row) {
+            $byPo[(int) $row['po_id']][] = $this->cast($row);
+        }
+
+        return array_map(static function (array $po) use ($byPo): array {
+            $po['id'] = (int) $po['id'];
+            $po['work_orders'] = $byPo[$po['id']] ?? [];
+            return $po;
+        }, $pos);
+    }
+
+    /** İş emrinin istasyon geçmişi: hangi istasyonda, ne zaman, kim okuttu (eskiden yeniye). */
+    public function history(int $id): array
+    {
+        $this->get($id);
+
+        $stmt = $this->db->prepare(
+            'SELECT sc.id, sc.scanned_at, sc.station_id, s.name AS station_name, s.is_final, u.username, sc.kind, sc.status
+               FROM scans sc
+               LEFT JOIN stations s ON s.id = sc.station_id
+               LEFT JOIN users u ON u.id = sc.user_id
+              WHERE sc.work_order_id = :id
+              ORDER BY sc.scanned_at, sc.id'
+        );
+        $stmt->execute(['id' => $id]);
+
+        return array_map(static fn (array $r): array => [
+            'id'           => (int) $r['id'],
+            'scanned_at'   => $r['scanned_at'],
+            'station_id'   => $r['station_id'] === null ? null : (int) $r['station_id'],
+            'station_name' => $r['station_name'],
+            'is_final'     => (bool) $r['is_final'],
+            'username'     => $r['username'],
+            'kind'         => $r['kind'],
+            'status'       => $r['status'],
+        ], $stmt->fetchAll());
+    }
+
     public function delete(int $id): void
     {
         $this->get($id);
@@ -122,7 +178,7 @@ final class WorkOrderService
      *
      * @return array{work_order: array, scan_id: int}
      */
-    public function scan(string $barcode, int $stationId): array
+    public function scan(string $barcode, int $stationId, ?int $userId = null): array
     {
         $station = $this->stations->getActive($stationId);
 
@@ -155,8 +211,12 @@ final class WorkOrderService
                 throw new HttpException(409, 'WORK_ORDER_DONE', "{$wo['ma_code']} zaten tamamlanmış.");
             }
 
-            $this->db->prepare('INSERT INTO scans (work_order_id, station_id) VALUES (:id, :station)')
-                ->execute(['id' => $wo['id'], 'station' => $station['id']]);
+            $this->db->prepare(
+                "INSERT INTO scans (work_order_id, station_id, user_id, kind, status) VALUES (:id, :station, :user, 'scan', :status)"
+            )->execute([
+                'id' => $wo['id'], 'station' => $station['id'], 'user' => $userId,
+                'status' => $station['is_final'] ? 'done' : 'in_progress',
+            ]);
             $scanId = (int) $this->db->lastInsertId();
 
             $this->db->commit();
@@ -166,6 +226,51 @@ final class WorkOrderService
         }
 
         return ['work_order' => $this->get($wo['id']), 'scan_id' => $scanId];
+    }
+
+    /**
+     * Yönetici taşıması: iş emri, durumundan bağımsız olarak istenen konuma alınır.
+     * Hedef bir istasyon (son istasyonsa tamamlanır), Bekliyor (open) veya İptal (cancelled) olabilir.
+     * Her taşıma geçmişe "move" olarak, yapan kullanıcıyla kaydedilir.
+     *
+     * @param array{station_id?: mixed, status?: mixed} $input
+     */
+    public function move(int $id, array $input, int $userId): array
+    {
+        if (isset($input['station_id'])) {
+            $station   = $this->stations->getActive(Validator::positiveInt($input, 'station_id', 0));
+            $stationId = $station['id'];
+            $status    = $station['is_final'] ? 'done' : 'in_progress';
+        } elseif (in_array($input['status'] ?? null, ['open', 'cancelled'], true)) {
+            $stationId = null;
+            $status    = $input['status'];
+        } else {
+            throw HttpException::validation('station_id', 'Hedef istasyon veya durum (open, cancelled) seçilmeli.');
+        }
+
+        $this->db->beginTransaction();
+        try {
+            $wo = $this->get($id);
+            if ($wo['status'] === $status && $wo['current_station_id'] === $stationId) {
+                throw new HttpException(409, 'NO_CHANGE', "{$wo['ma_code']} zaten bu konumda.");
+            }
+
+            $this->db->prepare(
+                "UPDATE work_orders SET current_station_id = :station, status = :status, updated_at = datetime('now')
+                  WHERE id = :id"
+            )->execute(['id' => $id, 'station' => $stationId, 'status' => $status]);
+
+            $this->db->prepare(
+                "INSERT INTO scans (work_order_id, station_id, user_id, kind, status) VALUES (:id, :station, :user, 'move', :status)"
+            )->execute(['id' => $id, 'station' => $stationId, 'user' => $userId, 'status' => $status]);
+
+            $this->db->commit();
+        } catch (\Throwable $e) {
+            $this->db->rollBack();
+            throw $e;
+        }
+
+        return $this->get($id);
     }
 
     private function findOne(string $condition, int|string $value): ?array

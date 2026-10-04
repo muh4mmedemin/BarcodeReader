@@ -12,4 +12,7 @@ spl_autoload_register(static function (string $class): void {
     }
 });
 
-return require __DIR__ . '/config.php';
+$config = require __DIR__ . '/config.php';
+date_default_timezone_set($config['timezone']);
+
+return $config;

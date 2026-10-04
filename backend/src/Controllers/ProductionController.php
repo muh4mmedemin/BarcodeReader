@@ -38,10 +38,18 @@ final class ProductionController
             throw HttpException::validation('barcode', 'Barkod zorunludur.');
         }
 
-        if (!isset($input['station_id'])) {
-            throw HttpException::validation('station_id', 'İstasyon seçilmeli.');
+        // Üretim kullanıcısının istasyonu hesabına sabittir; gövdedeki station_id yok sayılır.
+        $user = $request->user;
+        if ($user['role'] === 'production') {
+            $stationId = $user['station_id']
+                ?? throw new HttpException(403, 'NO_STATION', 'Bu kullanıcıya istasyon atanmamış.');
+        } else {
+            if (!isset($input['station_id'])) {
+                throw HttpException::validation('station_id', 'İstasyon seçilmeli.');
+            }
+            $stationId = Validator::positiveInt($input, 'station_id', 0);
         }
 
-        Response::data($this->workOrders->scan($barcode, Validator::positiveInt($input, 'station_id', 0)), 201);
+        Response::data($this->workOrders->scan($barcode, $stationId, $user['id']), 201);
     }
 }
